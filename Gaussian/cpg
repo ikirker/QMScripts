@@ -1,0 +1,51 @@
+#! /usr/bin/perl
+use strict;
+use warnings;
+
+# This would probably be easier in Bash, but as a sort of small challenge and practise, I'm doing it in perl.
+
+my ($file_in,$file_out,$name_in,$name_out,$escaped_name_in);
+
+
+if (not (defined($ARGV[0]) and defined ($ARGV[1])))
+{
+	die ("Insufficient arguments provided.\n");
+} else
+{
+	$file_in = $ARGV[0];
+	$file_out= $ARGV[1];
+	
+	$name_in = $file_in;
+	$name_out= $file_out;
+
+	$name_in =~ s/.*\/([^\/]*)$/$1/;
+	$name_out=~ s/.*\/([^\/]*)$/$1/;
+	
+	$name_in =~ s/\.com$//;
+	$name_out=~ s/\.com$//;
+
+	$escaped_name_in = $name_in;
+	$escaped_name_in =~ s/([^A-Za-z0-9])/\\$1/g;
+	
+	if ($file_in eq $file_out)
+	{
+		die ("Source file and destination file cannot be the same.\n");
+	} elsif (not (-s ($file_in))) {
+		die ("Source file does not exist.\n");
+	}
+
+	open(FILE_IN, "<$file_in");
+	open(FILE_OUT,">$file_out");
+	
+	while(<FILE_IN>)
+	{
+		$_ =~ s/$escaped_name_in/$name_out/g;
+		print(FILE_OUT $_);
+	}
+
+	close (FILE_IN);
+	close (FILE_OUT);
+	
+	print("$file_out\n");	
+}
+

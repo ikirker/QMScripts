@@ -1,0 +1,272 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use Getopt::Long;
+Getopt::Long::Configure("posix_default");
+#use IO::Interactive qw( is_interactive );
+use FileHandle;
+use Term::ReadKey;
+#use File::Path::Tiny;
+
+#######################
+# Some quick settings #
+#######################
+
+# Set this to the full path of your gnuplot binary, obviously.
+#  No environment variables, pls.
+#  If none set, it'll look in your PATH.
+my $gnuplot_path;
+$gnuplot_path = "";
+
+# The first energy change can be massive and tends to force you to
+#  rescale to see anything useful. So, by default, I set it to 0,
+#  since it's rarely useful anyway.
+my $blank_first_energy_reading = 1;
+
+
+# Example output:
+
+#--------------------------------------
+#Geometry Convergence after Step   9
+#--------------------------------------
+#current energy                               -0.51978109 Hartree
+#abs of energy change                0.00000487     0.00100000    T
+#constrained gradient max            0.00000785     0.00100000    T
+#constrained gradient rms            0.00000323     0.00066667    T
+#gradient max                        0.00000785
+#gradient rms                        0.00000323
+#cart. step max                      0.00000698     0.01000000    T
+#cart. step rms                      0.00000364     0.00666667    T
+
+# Later version:
+#-------------------------------------- 
+#Geometry Convergence after Step   1 
+#-------------------------------------- 
+#current energy                              -47.17506370 Hartree 
+#energy change                     -47.17506370     0.00100000    F 
+#constrained gradient max            0.01303780     0.00100000    F 
+#constrained gradient rms            0.00330414     0.00066667    F 
+#gradient max                        0.01303781 
+#gradient rms                        0.00330414 
+#cart. step max                      0.55969266     0.01000000    F 
+#cart. step rms                      0.17128605     0.00666667    F 
+
+my $force_formatted_output = 0;
+my $force_unformatted_output = 0;
+my $use_log_scale = 0;
+my $result = GetOptions (
+	"unformatted|u!" => \$force_unformatted_output,
+    "formatted|f!" => \$force_formatted_output,
+	"logscale|l!" => \$use_log_scale
+	);
+
+# Arrays for storing retrieved values
+my $geostep = 0;
+my @current_energy;
+my @energy_change;
+my @cgrad_max;
+my @cgrad_rms;
+my @grad_max;
+my @grad_rms;
+my @cartstep_max;
+my @cartstep_rms;
+
+# Set step 0 variables to 0 for comparison purposes.
+$current_energy[0]=0.0;
+$energy_change[0]=0.0;
+$cgrad_max[0]=0.0;
+$cgrad_rms[0]=0.0;
+$grad_max[0]=0.0;
+$grad_rms[0]=0.0;
+$cartstep_max[0]=0.0;
+$cartstep_rms[0]=0.0;
+
+
+while (<>) {
+	# Get step number
+	#  Note that by anchoring at the beginning, we avoid
+	#   the possibility of recapturing the dupe in the log.
+	if ( $_ =~ /^Geometry Convergence after Step[ \t]+(\d+)/ ) {
+		$geostep = $1;
+	}
+
+	# Get the current energy
+	if ( $_ =~ /^current energy[ \t]+([0-9.-]+) Hartree/ ) {
+		$current_energy[$geostep] = $1;
+	}
+
+	# And all the other values - only matching once saves effort
+	my $s_energy_change = "energy change";
+	my $s_cgrad_max     = "constrained gradient max";
+	my $s_cgrad_rms     = "constrained gradient rms";
+	my $s_grad_max      = "gradient max";
+	my $s_grad_rms      = "gradient rms";
+	my $s_cartstep_max  = "cart. step max";
+	my $s_cartstep_rms  = "cart. step rms";
+	my $other_values = "$s_energy_change|".
+	                   "$s_cgrad_max|".
+					   "$s_cgrad_rms|".
+					   "$s_grad_max|".
+					   "$s_grad_rms|".
+					   "$s_cartstep_max|".
+					   "$s_cartstep_rms";
+					   
+	if ( $_ =~ /^($other_values)[ \t]+([0-9.-]+)(?:[ \t]+|)([0-9.-]+|)([ \t]+|)/ ) {
+		if ( $1 eq $s_energy_change ) { $energy_change[$geostep] = $2; }
+		elsif ($1 eq $s_cgrad_max )   { $cgrad_max[$geostep]     = $2; }
+		elsif ($1 eq $s_cgrad_rms )   { $cgrad_rms[$geostep]     = $2; }
+		elsif ($1 eq $s_grad_max  )   { $grad_max[$geostep]      = $2; }
+		elsif ($1 eq $s_grad_rms  )   { $grad_rms[$geostep]      = $2; }
+		elsif ($1 eq $s_cartstep_max) { $cartstep_max[$geostep]  = $2; }
+		elsif ($1 eq $s_cartstep_rms) { $cartstep_rms[$geostep]  = $2; }
+	}
+}
+
+# Check we actually have some data points - if not, exit
+
+if ( $geostep < 1 )
+{
+	die ("No data points retrieved.\n");
+}
+
+
+
+# Print output values
+
+#if ((is_interactive() or ($force_formatted_output == 1)) and ($force_unformatted_output == 0))
+if (($force_formatted_output == 1) and ($force_unformatted_output == 0))
+	{
+	# Print output header
+
+	print("Step | Energy diff. |  CGrad. Max  |  CGrad. RMS  |   Grad. Max  |   Grad. RMS  | CartStep Max | CartStep RMS \n");
+	
+	my $i;
+	for ( $i=1; $i<=$geostep; $i++ )
+	{
+		printf(" %3d | %10s %s | %10s %s | %10s %s | %10s %s | %10s %s | %10s %s | %10s %s\n", 
+			$i,	
+			$energy_change[$i], ($energy_change[$i]<$energy_change[$i-1])?"-":"+",
+			$cgrad_max[$i],     ($cgrad_max[$i]<$cgrad_max[$i-1])?"-":"+", 
+			$cgrad_rms[$i],     ($cgrad_rms[$i]<$cgrad_rms[$i-1])?"-":"+", 
+			$grad_max[$i],      ($grad_max[$i]<$grad_max[$i-1])?"-":"+",
+			$grad_rms[$i],      ($grad_rms[$i]<$grad_rms[$i-1])?"-":"+",
+			$cartstep_max[$i],  ($cartstep_max[$i]<$cartstep_max[$i-1])?"-":"+",
+			$cartstep_rms[$i],  ($cartstep_rms[$i]<$cartstep_rms[$i-1])?"-":"+"
+		);
+	}
+} else {
+	print("Step,Energy diff.,CGrad. Max,CGrad. RMS,Grad. Max,Grad. RMS,CartStep Max,CartStep RMS \n");
+	my $i;
+	for ( $i=1; $i<=$geostep; $i++ )
+	{
+		printf("%d,%10s,%10s,%10s,%10s,%10s,%10s,%10s\n", 
+			$i,	
+			$energy_change[$i],
+			$cgrad_max[$i],    
+			$cgrad_rms[$i],    
+			$grad_max[$i],     
+			$grad_rms[$i],     
+			$cartstep_max[$i], 
+			$cartstep_rms[$i] 
+		);
+	}
+	
+}
+
+# Blank the first energy change so it doesn't overwhelm the graph
+if ($blank_first_energy_reading == 1)
+{
+	$energy_change[1]=$energy_change[2];
+}
+
+
+# Plottit
+
+my $i;
+mkdir "/tmp/$$";
+open ( ENERGY_CHANGE, ">/tmp/$$/energy_change" );
+open ( CGRAD_MAX, ">/tmp/$$/cgrad_max" );
+open ( CGRAD_RMS, ">/tmp/$$/cgrad_rms" );
+open ( GRAD_MAX, ">/tmp/$$/grad_max" );
+open ( GRAD_RMS, ">/tmp/$$/grad_rms" );
+open ( CARTSTEP_MAX, ">/tmp/$$/cartstep_max" );
+open ( CARTSTEP_RMS, ">/tmp/$$/cartstep_rms" );
+
+for ($i=1;$i<=$geostep;$i++)
+{
+	printf( ENERGY_CHANGE "%d %10s\n",$i,$energy_change[$i] );
+	printf( CGRAD_MAX     "%d %10s\n",$i,$cgrad_max[$i] );
+	printf( CGRAD_RMS     "%d %10s\n",$i,$cgrad_rms[$i] );
+	printf( GRAD_MAX     "%d %10s\n",$i,$grad_max[$i] );
+	printf( GRAD_RMS     "%d %10s\n",$i,$grad_max[$i] );
+	printf( CARTSTEP_MAX     "%d %10s\n",$i,$cartstep_max[$i] );
+	printf( CARTSTEP_RMS     "%d %10s\n",$i,$cartstep_rms[$i] );
+}
+
+close ( ENERGY_CHANGE );
+close ( CGRAD_MAX );
+close ( CGRAD_RMS );
+close ( GRAD_MAX );
+close ( GRAD_RMS );
+close ( CARTSTEP_MAX );
+close ( CARTSTEP_RMS );
+
+
+# Make sure we have a gnuplot executable.
+if ( !defined($gnuplot_path) || ($gnuplot_path eq "") )
+{
+	$gnuplot_path = `which gnuplot`;
+  chomp($gnuplot_path);
+	
+	if ($gnuplot_path eq "")
+	{
+		die ("No gnuplot binary could be found.\n");
+	}
+}
+
+my $use_interactive_pipe=0;
+
+if ($use_interactive_pipe==1) {
+  open (GP, "|$gnuplot_path");
+  # force buffer to flush after each write
+  GP->autoflush(1);
+} else {
+  open (GP, ">/tmp/$$/plot.string");
+}
+
+my $plot_string = "set term x11;";
+
+if ($use_log_scale == 1)
+{
+	$plot_string .= "set logscale y 10;";
+}
+
+$plot_string .= "plot '/tmp/$$/energy_change' title 'Energy Change' with linespoints,".
+					"'/tmp/$$/cgrad_max' title 'Constrained Grad Max' with linespoints,".
+					"'/tmp/$$/cgrad_rms' title 'Constrained Grad RMS' with linespoints,".
+					"'/tmp/$$/grad_max'  title 'Grad Max' with linespoints,".
+					"'/tmp/$$/grad_rms'  title 'Grad RMS' with linespoints,".
+					"'/tmp/$$/cartstep_max' title 'Cart Step Max' with linespoints,".
+					"'/tmp/$$/cartstep_rms' title 'Cart Step RMS' with linespoints,".
+					"0.001 title '0.001' with dots 30,".
+					"0.0001 title '0.0001' with dots 30,".
+					"0.00001 title '0.00001' with dots 30";
+					
+print (GP "$plot_string\n");
+
+close GP;
+if ($use_interactive_pipe == 0) {
+  system("$gnuplot_path -persist /tmp/$$/plot.string")
+}
+
+#if (is_interactive())
+#{
+#	print("Press [Enter] to exit...");
+#	ReadKey();
+#}
+#close GP;
+
+# Remove data files and temporary directory.
+#File::Path::Tiny::rm("/tmp/$$");
+

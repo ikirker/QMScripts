@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+OLDDIR=`pwd`
+
+#Get command line arguments
+while getopts  "hd:n:s:" flag
+do
+    case "$flag" in
+        "d")
+			if [[ -d "$OPTARG" ]]; then
+			  cd $OPTARG
+			fi
+			;;
+		"n")
+			ROTATIONAL_NUMBER=$OPTARG
+            ;;
+		"s")
+			SCALE_FACTOR=$OPTARG
+            ;;
+		"h")
+			echo "Usage: $0 [-d directory] [-n symmetry_number] [-s scale_factor]"
+			exit
+			;;
+        *)
+            echo "Invalid argument specified." >&2
+            return 1 
+            ;;
+    esac
+done
+
+DIRNAME=`pwd`
+DIRNAME=${DIRNAME##*/}
+TMPDIR=/tmp/tmarchive-$$
+TMPCOPYDIR=$TMPDIR/$DIRNAME
+
+mkdir -p $TMPCOPYDIR && cpc $TMPCOPYDIR && cd $TMPDIR && tar -czf $DIRNAME.tar.gz $DIRNAME && mv $DIRNAME.tar.gz $OLDDIR/ && rm -Rf $TMPDIR 
+
+

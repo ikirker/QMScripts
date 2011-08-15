@@ -1,0 +1,7 @@
+#!/usr/bin/env bash 
+
+tmpfile=/tmp/finalmol-$$.xyz
+t2x -c >> $tmpfile && \
+jmol $tmpfile && \
+rm $tmpfile
+

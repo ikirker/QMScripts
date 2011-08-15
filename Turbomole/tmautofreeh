@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+SCALE_FACTOR=1.00
+
+
+#Get command line arguments
+while getopts  "hd:n:s:" flag
+do
+    case "$flag" in
+        "d")
+			if [[ -d "$OPTARG" ]]; then
+			  cd $OPTARG
+			fi
+			;;
+		"n")
+			ROTATIONAL_NUMBER=$OPTARG
+            ;;
+		"s")
+			SCALE_FACTOR=$OPTARG
+            ;;
+		"h")
+			echo "Usage: $0 [-d directory] [-n symmetry_number] [-s scale_factor]"
+			exit
+			;;
+        *)
+            echo "Invalid argument specified." >&2
+            return 1 
+            ;;
+    esac
+done
+
+#echo -e "$ROTATIONAL_NUMBER\n$SCALE_FACTOR\n\nq\n" | freeh | grep -A3 'chem.pot.   energy    entropy'
+echo -e "$ROTATIONAL_NUMBER\n$SCALE_FACTOR\n\nq\n" | freeh | sed -n -e '/chem.pot.   energy    entropy/N;/chem.pot.   energy    entropy/N;/chem.pot.   energy    entropy/N;/chem.pot.   energy    entropy/N;/chem.pot.   energy    entropy/p;' -e "s/ exchange group is SIGMA=   \([0-9]\). SIGMA is/Default Symmetry Number is \1, using $ROTATIONAL_NUMBER/p"
+

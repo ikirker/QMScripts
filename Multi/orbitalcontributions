@@ -1,0 +1,476 @@
+#!/usr/bin/env python
+
+import re
+import sys
+import getopt
+import collections
+from optparse import OptionParser
+
+# Our (global) MO and SFO tuple specs
+MOmaker  = collections.namedtuple("MO", "energy occupancy spin number symmetry components")
+SFOmaker = collections.namedtuple("SFO", "percent number otype energy occupancy fragmentNumber fragmentName")
+
+# TODO: Quick and dirty hack - ugh
+externalIndent = None
+
+
+# Part of the ADF read-in process
+def processEntry( match, matchType, currentSpin, MO=None ):
+  g = match.groups() #Quick shorthand
+  #print(matchType)
+  #print(match.string)
+  #print(g)  
+
+  #If the line includes an MO spec, then we generate a new MO tuple for it
+  if matchType=="full": #Then it's a full line, not a sub line
+    MO = MOmaker( g[0], g[1], currentSpin, g[2], g[3], list() )
+    #MO.energy    = g[0]
+    #MO.occupancy = g[1]
+    #MO.number    = g[2]
+    #MO.symmetry  = g[3]
+
+  #Then we append the SFO specced to the list of components for the MO in hand
+  SFO = SFOmaker( g[-7], g[-6], g[-5], g[-4], g[-3], g[-2], g[-1] )
+  MO.components.append(SFO)
+  #SFO.percent = g[-7]
+  #SFO.number  = g[-6]
+  #SFO.otype    = g[-5]
+  #SFO.energy  = g[-4]
+  #SFO.occupancy = g[-3]
+  #SFO.fragmentNumber = g[-2]
+  #SFO.fragmentName   = g[-1]
+
+  #Then return the MO so that future calls to add more SFOs can use it
+  return MO
+
+
+def componentString(MOcomponents, options):
+  dictComponents = dict()
+  dictFragmentSums = dict()
+  # Note this is a little bad at the moment, since I completely fashioned it by the requirements of the moment
+  #  - it doesn't distinguish between different fragments with the same name because I mostly cared about the Actinide
+  for SFO in MOcomponents:
+    if options.only_show != None:
+      if SFO.fragmentName != options.only_show:
+        continue
+    if (SFO.fragmentName + " " + SFO.otype) not in dictComponents:
+      dictComponents[SFO.fragmentName + " " + SFO.otype] = float(SFO.percent)
+    else:
+      dictComponents[SFO.fragmentName + " " + SFO.otype] += float(SFO.percent)
+
+    if SFO.fragmentName not in dictFragmentSums:
+      dictFragmentSums[SFO.fragmentName] = float(SFO.percent)
+    else:
+      dictFragmentSums[SFO.fragmentName] += float(SFO.percent)
+
+  listFragmentSumStrings = list()
+  for fragment in dictFragmentSums:
+    listFragmentSumStrings.append("{%s %.0f%%}" % (fragment, dictFragmentSums[fragment]))
+    #listFragmentSumStrings.append("{%s %.2f%%}" % (fragment, dictFragmentSums[fragment]))
+  listFragmentSumStrings.sort()
+
+  returnString = ""
+  #for fragment in dictFragmentSums:
+  for fragmentString in listFragmentSumStrings:
+    returnString += fragmentString #("{%s %.2f%%}" % (fragment, dictFragmentSums[fragment]))
+  returnString += " "  
+  if options.skip_components==False:
+    for component in dictComponents:
+      #returnString += ("(%s, %.2f%%) " % (component, dictComponents[component]))  
+      returnString += ("(%s, %.0f%%) " % (component, dictComponents[component]))  
+  
+  return returnString
+
+
+def makeSVGscale( MOlist, SVGfilename="out.svg", componentLabels=True):
+
+  #Iterate over MOs, writing lines according to energy, and saving max and min
+  #  Note - SVG origin is at top left
+  maxEnergy = -50
+  minEnergy = 50
+  lines = ""
+  texts = ""
+  scaling = 200
+  origin = 5
+  linesIndent = 100
+  linesMultipleGap = 10
+  linesLength = 50
+  linesMultipleTolerance = 0.003 # In Hartrees
+  scl = lambda x: int((origin-x)*scaling) #Scale energies to pixel places
+  colourList = (["black", "blue", "red", "purple"])
+
+  #TODO: Quick and dirty hack for multiple files
+  if externalIndent != None:
+    linesIndent = externalIndent
+
+  lastEnergy = 0
+  multiplicity = 0
+  for MO in MOlist:
+    thisEnergy = float(MO.energy)
+    if maxEnergy < thisEnergy:
+      maxEnergy = thisEnergy
+    if minEnergy > thisEnergy:
+      minEnergy = thisEnergy
+
+    ## If more than one orb at the same energy, put them next to each other
+    #if abs(lastEnergy - thisEnergy) < linesMultipleTolerance:
+    #  multiplicity = multiplicity + 1
+    #else:
+    #  multiplicity = 0
+    #lastEnergy = thisEnergy  
+    #
+    #xVal1 = linesIndent + linesLength * multiplicity + linesMultipleGap * multiplicity
+    #xVal2 = linesIndent + linesLength * (multiplicity + 1) + linesMultipleGap * multiplicity
+    #yVal = scl(float(MO.energy))
+    
+    #if float(MO.occupancy) > 0.9:
+    #  colour = "black"
+    #elif float(MO.occupancy) > 0.1:
+    #  colour = "purple"
+    #else:  
+    #  colour = "red"
+    
+    # If more than one orb at the same energy, colour them differently
+    if abs(lastEnergy - thisEnergy) < linesMultipleTolerance:
+      multiplicity = multiplicity + 1
+    else:
+      multiplicity = 0
+    lastEnergy = thisEnergy  
+    
+    xVal1 = linesIndent 
+    xVal2 = linesIndent + linesLength 
+    yVal = scl(float(MO.energy))
+    
+    colour = colourList[multiplicity]
+
+    lines = lines + "<line x1='" + str(xVal1) + "' x2='" + str(xVal2) + "' y1='" + str(yVal) + "' y2='" + str(yVal) + "' stroke = '"+ colour + "' stroke-width = '1' /><!--"+MO.energy+"-->"+"\n"  
+    
+    if componentLabels == True:
+      texts = texts + "<text fill='black' font-family='Bitstream Vera Sans Mono' font-size='11' x='" + str(xVal2) + "' y='" + str(yVal) + "' transform='scale(0.5,1)'> E=" + MO.energy + "  " + componentString(MO.components) + "</text>\n"
+
+  #Make scale
+  scaleText = ""
+  scaleIndent = 50
+  scaleTextIndent = scaleIndent - 20
+  scalePips   = 0.5
+  scalePipLength = 3 
+  scaleMultiplier = 1
+  scaleColour='black'
+  scaleStroke = 1
+  scaleTextSize = 18
+  axisText = "Energy (Hartrees)"
+  scaleMax = int(maxEnergy)
+  scaleMin = int(minEnergy)
+
+  # The axis
+  scaleText = ( "<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
+    (scaleIndent, scaleIndent, scl(scaleMin), scl(scaleMax), scaleColour, scaleStroke) )
+
+  # Count down from scaleMax to scaleMin, putting pips on the axis.
+  pip = scaleMax
+  while pip > scaleMin:
+    scaleText += ("<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
+        (scaleIndent - scalePipLength, scaleIndent, scl(pip), scl(pip), scaleColour, scaleStroke) )
+    scaleText += ( "<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' transform='scale(0.5,1)'> %-.3f </text>\n" %
+        (scaleTextIndent, scl(pip) + scaleTextSize/2, scaleColour, "Bitstream Vera Sans Mono", scaleTextSize, pip)  )
+    pip -= scalePips
+
+  #TODO:  multiple files
+  if externalIndent != None:
+    scaleText = ""
+
+
+  #Now we have all the bits, open and write the SVG file
+  SVGfile = open(SVGfilename, "w")
+  SVGfile.write("""<?xml version="1.0" standalone="no"?>\n"""+
+                """<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n""")
+
+  # Fit the viewbox to the max and min
+  SVGfile.write("""<svg version="1.1" baseProfile="full" \n\t xmlns="http://www.w3.org/2000/svg" \n""" + 
+              """\t xmlns:xlink="http://www.w3.org/1999/xlink" \n\t xmlns:ev="http://www.w3.org/2001/xml-events" \n""" +
+          """\t zoomAndPan="magnify" \n""" + 
+          """\t viewBox = "%d %d %d %d" > \n""" % ( 0, 
+                               int((origin-maxEnergy)*scaling)-10,
+                               400 ,
+                             int((origin-minEnergy)*scaling)+10 ) )
+  
+  # Put a line at the origin
+  SVGfile.write('<line x1="5" x2="550" y1="' + str(origin*scaling) + '" y2="' + str(origin*scaling) + '" stroke="red" stroke-width="1" style="stroke-dasharray: 5, 3;" />'+"\n")
+  SVGfile.write(lines)
+  SVGfile.write(texts)
+  SVGfile.write(scaleText)
+  SVGfile.write("</svg>")
+  return
+
+def printTSVenergies(MOlist):
+  for MO in MOlist:
+    sys.stdout.write("%s\t" % MO.energy)
+  return
+
+def parseOptions():
+  usage = "usage: %prog [options] arg1 ..."
+  parser = OptionParser(usage=usage)
+  parser.add_option("-s", "--svg", action="store", type="string", dest="svgFilename", default=None, 
+                    help="write SVG diagram to FILE", metavar="FILE")
+  parser.add_option("-a", "--alpha", action="store_true", dest="alpha", default=False,
+          help="only consider alpha spin orbitals")
+  parser.add_option("-b", "--beta",  action="store_true", dest="beta", default=False,
+          help="only consider beta spin orbitals")
+  parser.add_option("-o", "--occ",   action="store_true", dest="occ", default=False,
+          help="only consider occupied orbitals")
+  parser.add_option("-t", "--tsv",   action="store_true", dest="tsv", default=False,
+          help="only print energies as tsv")
+  parser.add_option("-m", "--nocomps", action="store_true", dest="skip_components", default=False,
+          help="don't print detailed components")
+  parser.add_option("-l", action="store", type="float", dest="lb", default=None, help="Lower energy bound")
+  parser.add_option("-u", action="store", type="float", dest="ub", default=None, help="Upper energy bound")
+  parser.add_option("-i", action="store", type="int", dest="lineIndent", default=None, help="Indent orbital lines")
+  parser.add_option("-d", "--remove_degeneracy", action="store_true", dest="remove_degeneracy", default=False,
+          help="remove degenerate orbitals")
+  parser.add_option("--only-show", action="store", type="string", dest="only_show", default=None,
+          help="Only show percentage components of ATOM", metavar="ATOM")
+  #I'd like to add this but first TODO I'd have to convert the energies to actually be numbers below
+  #  and it'd involve a fair bit of fiddling
+  #parser.add_option("-u", "--units", action="store", type="string", dest="units", default="eV",
+  #        help="select units for text output (default=eV, options=Hartree, eV, cm^-1, kJ/mol")
+  (options, args) = parser.parse_args()
+  
+  if len(args) == 0:
+    parser.print_help()
+    sys.exit(2)
+  
+  return (options,args)
+
+def readADForbitalContributions(lines):
+  reSection = re.compile("[ \t]+List of all MOs, ordered by energy, with the most significant SFO gross populations")
+  reSpin    = re.compile("[ \t]+\*\*\* SPIN (\d) \*\*\*")
+  reSubsection = re.compile("[ \t]+-------------------------------------------------------------------------------------")
+
+  markSection = False
+  markSubsection = False  
+  spin = 0
+  
+  # Sample output from ADF 
+  #          E(eV)  Occ       MO           %     SFO (first member)   E(eV)  Occ   Fragment
+  # e.g.
+  #     -22.427  1.00    37 AA        35.01%     5 P:y           -22.819  2.00     1 Am
+  #                                   14.31%     5 P:x           -22.819  2.00     1 Am
+                     
+  reTopEntry = re.compile("""[ \t]+
+                ([-]{0,1}\d+\.\d+)[ \t]+
+                (\d\.\d+)[ \t]+
+                (\d+)[ ]+(\w+|\w+:\d+)[ \t]+
+                (\d+\.\d+)%[ \t]+
+                (\d+)[ \t]+
+                (\w:\S+|\w)[ \t]+
+                ([-]{0,1}\d+\.\d+)[ \t]+
+                (\d\.\d+)[ \t]+
+                (\d+)[ \t]+
+                (\w+)""", re.X)
+  reSubEntry = re.compile("""[ \t]+
+                ([-]{0,1}\d+\.\d+)%[ \t]+
+                (\d+)[ \t]+
+                (\w:\S+|\w)[ \t]+
+                ([-]{0,1}\d+\.\d+)[ \t]+
+                (\d\.\d+)[ \t]+
+                (\d+)[ \t]+
+                (\w+)""", re.X)
+
+  reNextSection = re.compile("[ \t]+===============================================================================")
+  
+  #Done defining Regexps, now read in orbitals
+  MOlist = list()
+
+  for line in lines:
+    
+    if markSection == False:
+      if reSection.match(line)!=None:
+        markSection = True
+        continue
+    else:
+      if markSubsection == False:
+        if reSubsection.match(line)!=None:
+          markSubsection = True
+          continue
+      else:
+        maLine = reTopEntry.match(line)
+        if maLine != None:
+          #Pull out entry bits
+          mostRecentMO = processEntry( maLine, "full", spin )
+          MOlist.append(mostRecentMO)
+          continue
+        else:
+          maLine = reSubEntry.match(line)
+          if maLine != None:
+            #Pull out subentry bits
+            processEntry( maLine, "sub", spin, mostRecentMO )
+            continue
+        if reNextSection.match(line) != None:
+          break
+      maLine = reSpin.match(line)
+      if maLine != None:
+        spin = maLine.group(1)
+  #Done for
+  return MOlist
+
+def readG09orbitalContributions(lines):
+  #The G09 output is a bit simpler and contains less information, unfortunately,
+  # so we have to omit some fields
+  reStartSection = re.compile(" Atomic contributions to (Alpha|Beta ) molecular orbitals:")
+  reEntry        = re.compile("(Alpha|Beta ) (occ|vir) (\d+) OE=([-]?\d+\.\d+) is (.*?)(?=(Alpha|Beta|$))")
+  reBlankLine    = re.compile("[\t ]*$")
+
+  inSection = False
+  MOlist = list()
+
+  orbLines = ""
+
+  for line in lines:
+    #Because Gaussian only has something like a 200 character buffer for the
+    #  output for this section, we need to glue the lines together and then
+    #  split them apart again.
+    
+    if inSection == False:
+      maStartSection = reStartSection.match(line)
+      if maStartSection == None:
+        continue
+      else:
+        inSection = True
+    else:
+      if reBlankLine.match(line) != None:
+        inSection = False
+        continue
+      orbLines = orbLines + line.lstrip(' ').rstrip("\n")  
+    
+
+  for maOrb in reEntry.finditer(orbLines):  
+    if maOrb.group(1) == "Alpha":
+      spinLabel = "1"
+    elif maOrb.group(1) == "Beta ":
+      spinLabel = "2"
+    else:
+      spinLabel = "0" # TODO At some stage I really should test this with a closed-shell system
+    
+    if maOrb.group(2) == "occ":
+      occLabel = "1.00"
+    else:
+      occLabel = "0.00" # TODO And also I haven't seen how Gaussian prints partially occupied orbitals here
+      
+    # Gaussian prints the energies in Hartrees, ADF in eV - other functions expect eV
+    currentMO = MOmaker(str(27.2116*float(maOrb.group(4))), occLabel, spinLabel, maOrb.group(3), "?", list() )  
+    
+    componentText = maOrb.group(5)
+    for m in re.finditer("([A-Za-z]+)(\d+)-(\w)=([-]?\d\.\d\d)", componentText):
+      #print("%s| |%s| |%s| |%s" % (m.group(1), m.group(2), m.group(3), m.group(4)))
+      currentMO.components.append(
+          SFOmaker(str(100*float(m.group(4))),
+              "_", 
+              m.group(3), "_", 
+              "_", m.group(2), 
+              m.group(1)))
+    MOlist.append(currentMO)      
+    #SFOmaker = collections.namedtuple("SFO", "percent number otype energy occupancy fragmentNumber fragmentName")
+  
+  return MOlist
+
+
+def main():
+
+  (options, args) = parseOptions()
+
+  #TODO: Quick and dirty hack for multiple files
+  global externalIndent
+  if options.lineIndent != None:
+    externalIndent = options.lineIndent
+
+  #TODO Replace this with an iteration later
+  inputFile = args[0]
+
+  #Check and get filetype
+  reFilename = re.compile("(.*)\.(out|log)$")
+  maFilename = reFilename.match(inputFile)
+  if maFilename==None:
+    sys.stderr.write("File has inappropriate extension - should be .out\n")
+    sys.exit(2)
+  
+  print(maFilename.group(1))
+  
+  file = open(inputFile,"r")
+  lines = file.readlines()
+
+  if maFilename.group(2) == "out":
+    MOlist = readADForbitalContributions(lines)
+  else:
+    MOlist = readG09orbitalContributions(lines)
+
+  
+  #Check reading in
+  #print(MOlist)
+  #  
+  print("Read in "+str(len(MOlist))+" MOs.")
+
+  #Exclude MOs by spin
+  if options.alpha or options.beta:
+    #Iterate over MOs, including them in the new list if the spin is right
+    MOlist2 = list()
+    if options.alpha:
+      spinCheck = "1"
+    else:
+      spinCheck = "2"
+    
+    for MO in MOlist:
+      if MO.spin == spinCheck:
+        MOlist2.append(MO)
+    
+    MOlist = MOlist2
+
+  #Exclude MOs by occupation
+  if options.occ:
+    MOlist2 = list()
+    for MO in MOlist:
+      if float(MO.occupancy) >= 0.5:
+        MOlist2.append(MO)
+
+    MOlist = MOlist2
+
+  #Exclude MOs by energy
+  if options.ub or options.lb:
+    MOlist2 = list()
+    for MO in MOlist:
+      if options.ub != None:
+        if float(MO.energy) > options.ub:
+          continue
+      if options.lb != None:
+        if float(MO.energy) < options.lb:
+          continue
+      MOlist2.append(MO)
+    MOlist = MOlist2  
+
+  if options.remove_degeneracy:
+    MOlist2 = list()
+    lastEnergy=0
+    for MO in MOlist:
+      if MO.energy != lastEnergy: # Remember this is actually a string comparison
+        MOlist2.append(MO)
+      lastEnergy = MO.energy
+    MOlist = MOlist2    
+
+  print("Filtered to " + str(len(MOlist)) + " MOs.")
+
+  #Sort the list of MOs by energy
+  MOlist.sort(key=lambda MO: float(MO.energy))
+
+  for MO in MOlist:
+    spinLabel = "+" if (int(MO.spin) == 1) else "-"  if (int(MO.spin) == 2) else "+-"
+    sys.stdout.write("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
+    sys.stdout.write("%s \n" % (componentString(MO.components,options))) 
+  
+  if options.tsv:
+    printTSVenergies(MOlist)
+  
+  if options.svgFilename:  
+    makeSVGscale(MOlist, options.svgFilename, False)
+
+if __name__ == "__main__":
+  main()  
+

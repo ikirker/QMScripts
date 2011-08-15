@@ -1,0 +1,52 @@
+#!/bin/sh
+# @(#) x2t2 converts XYZ to TURBOMOLE format
+#      (I don't see any reason why this can't take input off STDIN, so I'm making it do it.)
+#
+
+[ "$1" = "-h" -o "$1" = "-?" -o "$1" = "-help" ] && { 
+    echo
+    echo "USAGE: x2t {input_file} [ > output_file ]"
+    echo "Purpose: convert coordinates from XYZ to TURBOMOLE coord format."
+    echo "Argument: filename containing input XYZ coordinates."
+    echo
+    echo "Example of XYZ format (Angstrom):"
+    cat << END ;
+3
+Energy = 0.0
+AL    0.0000000    0.0000000   -2.4124913
+AL    1.8250325    1.8250325    1.3146305
+AL    0.6680083    2.4930408   -1.3146305
+END
+    echo
+    echo "Example of TURBOMOLE coord format (Bohr):"
+    cat << END ;
+\$coord
+    0.00000000000000      0.00000000000000     -4.55894913509667      al
+    3.44881257702290      3.44881257702290      2.48429230851390      al
+    1.26235309595620      4.71116567297910     -2.48429230851390      al
+\$end
+END
+    echo
+    exit 1 ; }
+
+# take care of decimal points
+LANG="C"
+LC_ALL="C"
+LC_CTYPE="C"
+
+INFILE=$1
+if [ ! -f $INFILE ]; then
+echo
+echo Can not find input file $INFILE
+echo
+exit 1
+else
+cat $INFILE | \
+	sed 's///g' | \
+	awk 'BEGIN {bohr=.52917720859; printf("$coord\n")}
+	 NF==4 && $1~/[A-Za-z]/ && $4~/[0-9]/ \
+		   {printf ("%20.14f  %20.14f  %20.14f      %2s\n",\
+					$2/bohr,$3/bohr,$4/bohr,tolower($1))}
+	 END {printf("$end\n")}'
+fi
+

@@ -1,0 +1,406 @@
+#!/bin/bash 
+#
+# This script checks, logs and submits our ADF job files to an SGE queue system.
+#  These are similar to ADF's .run files.
+#
+
+# Quick things you might want to change:
+DEFAULT_JOB_TIME=12 # In hours
+NODES=1
+PROCS_PER_NODE=4
+
+if [[ -z "$PROJECT_NAME" ]]; then
+	echo "You must set the Project Name environment variable."
+	exit
+fi
+
+LICENSE_FILE=$HOME/adf2009-license.txt
+
+#Set to the usual extension of your input file.
+INPUTEXTENSION="in"
+
+#Set to "y" to enable logging or archiving
+LOGGING="y"
+ARCHIVING="y"
+
+#Set to a file and a directory respectively to alter the defaults ($HOME/jobs_submitted.log and $HOME/Job_Archive)
+JOB_LOG_FILE=
+JOB_BACKUP_DIR=
+
+#Set to a file where jobs that finish will record time and name
+JOB_FINISHED_FILE="$HOME/jobs_finished.log"
+
+#If set to "y", the script will not ask whether to quit
+# on a restart file name that doesn't end with .t21
+EXIT_ON_BAD_RESTART_SUFFIX="n"
+
+#Set to the path of the executable or script that will execute your input file.
+EXESCRIPT="/usr/local/runadfpar"
+if [[ ! -e "$EXESCRIPT" ]]; then
+	EXESCRIPT="$HOME/scripts/runadf"
+	if [[ ! -e "$EXESCRIPT" ]]; then
+		EXESCRIPT="$HOME/local/sbin/runadf"
+	fi
+fi
+
+
+
+
+###########################################################################
+#
+# No more settings, start processing command line arguments and such.
+#
+
+if [[ "$1" == "" ]]; then
+	echo "No arguments provided - use \"qadf -h\" to get the syntax." >&2
+	exit;
+fi
+
+helpfile=`echo -e "\
+qadf - Submit an adf input file to the queue using runadf.\n\
+ qadf [-t hours|-T time ][-n name ][-p ] inputfile\n\
+ qadf -h\n\
+   -t   Set maximum time in hours. (Default:$JOB_TIME)\n\
+   -T   Set exact maximum time (HH:MM:SS)\n\
+   -n   Set name of job. (Default: filename less extension)\n\
+   -d   Downgrade priority of job, e.g. for overnight jobs.\n\
+   -p   Do not submit to qsub, only show job file that would be submitted.\n\
+   -h   Print this help.\n"`
+
+#Get command line arguments
+while getopts  "n:t:T:D:dph" flag
+do
+	case "$flag" in
+		"t")
+			JOB_TIME=$OPTARG
+			;;
+		"T")
+			EXACT_JOB_TIME=$OPTARG
+			;;
+		"n")
+			JOB_NAME=$OPTARG
+			;;
+		"D")
+			DEPENDS_ON=$OPTARG
+			;;
+		"h")
+			echo -e "$helpfile"
+			exit
+			;;
+		"d")
+			JOB_PRIORITY="-1020"
+			;;
+		"p")
+			NO_SUBMIT="y"
+			;;
+		*)
+			echo "Invalid argument specified." >&2
+			exit
+			;;
+	esac
+done 
+
+#echo $OPTIND
+
+#Get the filename as the last argument
+let filenameIndex=$OPTIND-1
+shift $filenameIndex
+
+JOB_FILE=$1
+
+#Check it
+if [ ! -e "$JOB_FILE" ]; then 
+	echo "Input file does not exist." >&2
+	echo "File specified: \"$JOB_FILE\"" >&2
+
+	exit
+fi
+
+#Possibly correct for any bad time input, and work out which type of time spec we have
+if [[ -z "$JOB_TIME" ]]; then
+	JOB_TIME=$DEFAULT_JOB_TIME
+fi
+if [[ -z "$EXACT_JOB_TIME" ]]; then
+	JOB_TIME=${JOB_TIME#[^0-9]*}
+	EXACT_JOB_TIME=${JOB_TIME%[^0-9]*}:00:00
+fi
+
+#Make a string for the dependency line, if it exists
+if [[ -n "$DEPENDS_ON" ]]; then
+	DEPENDENCY_STRING="#PBS -W depend=afterok:$DEPENDS_ON"
+else
+	DEPENDENCY_STRING="# Job has no dependencies."
+fi
+
+#Use 0 as the default job priority
+if [[ "$JOB_PRIORITY" == "" ]]; then
+	JOB_PRIORITY=0
+fi
+
+#Remove .in from the file ending for the run script
+JOB_FILE_NAME=${JOB_FILE%\.$INPUTEXTENSION}
+
+#Remove any directory data from the filename
+JOB_FILE_NAME=${JOB_FILE_NAME##*/}
+
+#Use the filename as the default job name
+if [[ "$JOB_NAME" == "" ]]; then 
+	JOB_NAME=ADF-$JOB_FILE_NAME
+fi
+
+#Make sure the input file is executable
+if [[ ! "$NO_SUBMIT" == "y" ]]; then
+	if [[ ! -x $JOB_FILE ]]; then
+		chmod +x $JOB_FILE || { echo -e "Could not make input file executable - not submitting.\n" >&2 ; exit ; }
+	fi
+fi
+
+# Check any restart files used are valid.
+RESTART_FILES=`grep -h "^[ \t]*restart " $1 | sed -e "s:restart::g" -e "s:&::g" -e "s: ::g"`
+if [[ ! "$RESTART_FILES" == "" ]]; then
+	#Check ending of restart file
+	FILE_SUFFIX=`expr match "$RESTART_FILES" '.*\.\(\w*\)'`
+	if [[ ! "$FILE_SUFFIX" == "t21" ]]; then
+		echo "Warning - restart file specified does not have a t21 extension." >&2
+		if [[ ! "$EXIT_ON_BAD_RESTART_SUFFIX" == "y" ]]; then
+			echo -n "Are you sure you wish to continue? (y/N)" >&2
+			read VERIFY
+			VERIFY=`expr substr "$VERIFY" "1" "1"`
+			if [[ "$VERIFY" != "y" ]]; then
+				exit
+			fi
+		else
+			exit
+		fi	
+	fi	
+	if [[ ! -e "$RESTART_FILES" ]]; then
+		if [[ -e "$RESTART_FILES.gz" ]]; then
+			if [[ ! "$NO_SUBMIT" == "y" ]]; then
+				echo -e "Unzipping required restart file $RESTART_FILES..." >&2
+				if gzip -d $RESTART_FILES.gz ; then
+					echo "Done."
+				else
+					echo "Could not unzip required restart file - stopping." >&2
+					exit 
+				fi
+			else
+				echo "Restart file found in a zipped state - would be unzipped for real submission." >&2
+			fi	
+		else
+			echo -e "Restart file does not exist: please check your input file." >&2
+			echo -e " Supplied filename was: $RESTART_FILES" >&2
+			echo -n "Are you sure you wish to continue? (y/N)" >&2
+			read VERIFY
+			VERIFY=`expr substr "$VERIFY" "1" "1"`
+			if [[ "$VERIFY" != "y" ]]; then
+				exit
+			fi
+ 
+		fi	
+	fi	 
+fi
+
+# Total number of processors to use:
+let NUMPROCS=$NODES*$PROCS_PER_NODE
+export NUMPROCS
+
+
+# This version is for SGE, on xenon.chem.ucl.ac.uk.
+#Make the script in a variable, escaping variables where necessary
+SGEscript="\
+#!/bin/csh
+# Job Name
+#\$ -N $JOB_NAME
+#
+# Parallel Environment Specification
+#\$ -pe mpich 2 
+#
+# Import environment variables
+# \$ -V
+#\$ -v COMMD_PORT,DISPLAY
+#\$ -cwd
+#
+# Use tcsh to interpret
+#\$ -S \"/bin/tcsh\"
+#
+# Specifies parallel job - Xenon-specific queue indicators
+#\$ -l parallel=TRUE
+#\$ -l  adf=TRUE
+#
+# Join out and err file, in hidden file named job-name
+#\$ -j y
+#\$ -o .\\\$JOB_NAME.o\\\$JOB_ID
+#
+# Set priority (default: 0)
+#\$ -p $JOB_PRIORITY
+#\$ -l h_rt=$JOB_TIME:00:00
+#
+# This scriptfile was automatically generated.
+date
+$EXESCRIPT $JOB_FILE_NAME
+date
+echo \"[\`date\`] $JOB_FILE_NAME\" >> $JOB_FINISHED_FILE 
+"
+
+# This is the legion version.
+PBSscript="\
+#!/bin/bash -l
+# This scriptfile was automatically generated.
+#
+# Job name
+#PBS -N $JOB_NAME
+#
+# Fair-share accounting info
+#PBS -A $PROJECT_NAME 
+#
+#
+# The ADF special queue.
+#!PBS -l software=adf+1
+
+# Import selected env vars.
+#PBS -d `pwd -P`
+#
+# Specify bash as shell.
+#PBS -S /bin/bash
+#
+# Set priority if applicable (default: 0)
+#PBS -p $JOB_PRIORITY
+#
+$DEPENDENCY_STRING
+#
+# Specify parallel job and settings
+#PBS -l nodes=$NODES:ppn=$PROCS_PER_NODE
+#PBS -l walltime=$EXACT_JOB_TIME
+#PBS -l mem=13G
+#PBS -l qos=parallel
+#PBS -l naccesspolicy=singlejob
+##PBS -l pmem=3500M
+##PBS -l pvmem=8000G
+#
+# Merge error and out into hidden file
+#PBS -j oe 
+#PBS -o .\$PBS_JOBNAME.o\$PBS_JOBID
+#
+
+#The licence setting:
+export SCMLICENSE=$LICENSE_FILE
+
+# Make a temporary directory and copy in the job file.
+TMPDIRNAME=\$PBS_JOBID--\$PBS_JOBNAME
+
+echo \"Making job directory (\$TMPDIRNAME)...\"
+mkdir -p \$PBS_O_WORKDIR/\$TMPDIRNAME
+
+echo \"Copying job file ($JOB_FILE) to job directory (\$TMPDIRNAME).\"
+cp -v $JOB_FILE ./\$TMPDIRNAME/
+
+echo
+echo \"Copying other required files:\"
+REQUIRED_FILES=\`grep -oh \"[^ ]*t21[^ ]*\" $JOB_FILE\`
+REQUIRED_FILES=\${REQUIRED_FILES#restart}
+echo \$REQUIRED_FILES
+for FILE in \$REQUIRED_FILES; do
+	cp -v \$FILE \$TMPDIRNAME/
+done
+
+# Change into the temporary common job directory.
+cd \$TMPDIRNAME
+
+date
+
+echo \"Changing to job directory and dereferencing non-real paths...\"
+WORKDIR=\$PBS_O_WORKDIR/\$TMPDIRNAME
+cd \$WORKDIR
+cd \`pwd -P\`
+export WORKDIR=\`pwd -P\`
+
+# EXPERIMENTAL: Set the local scratch space for this job
+export SCM_TMPDIR=/local
+
+# The following line creates a file (in the current working directory)
+# containing the names of the nodes reserved for this job. This is the
+# same as \$PBS_NODEFILE, except that here we remove the repetitions, so
+# that each node name appears only once. The advantage of creating this
+# file in our working directory is that it will remain after the job has
+# finished, leaving us with a record of which nodes the job ran on.
+
+cat \$PBS_NODEFILE | uniq > machine.file.\$PBS_JOBID
+
+#setup ADF nodeinfo file from \$PBS_NODEFILE and assign $PROCS_PER_NODE processors per node
+
+all_nodes=\`cat machine.file.\$PBS_JOBID\`
+
+for anode in \$all_nodes ; do
+	count=$PROCS_PER_NODE
+	echo \"\$anode \$count\" >> nodeinfo
+done
+
+# Actually run the script with the input file.
+#
+echo \"Scratch space is: \$TMPDIR\"
+echo \"Current Working Directory is: \`pwd\`\"
+$EXESCRIPT $JOB_FILE_NAME
+
+#This -should- be running in the TMPDIRNAME directory, so this should delete the copy.
+echo \"Removing copies of files used for calculation...\"
+for FILE in \$REQUIRED_FILES; do
+	rm -v \${FILE##*/}
+done
+
+echo \"Cleaning up non-ADF job files...\"
+rm -v machine.file.\$PBS_JOBID
+rm -v nodeinfo
+
+cd ..
+rmdir \$TMPDIRNAME # If this doesn't work I want to know what else is left over...
+
+date
+echo \"[\`date\`] $JOB_FILE_NAME\" >> $JOB_FINISHED_FILE 
+
+"
+
+case `hostname -f` in
+	"xenon.chem.ucl.ac.uk")
+	script=$SGEscript
+	;;
+	"login01.cu99.cluster"|"login02.cu99.cluster"|"login03.cu99.cluster"|"login04.cu99.cluster")
+	script=$PBSscript
+	;;
+	*)
+	echo "This machine has not had a template job file configured." >&2
+	exit
+	;;
+esac
+
+#Pipe the scriptfile into qsub
+if [[ "$NO_SUBMIT" == "y" ]]; then
+  echo "$script"  
+else  
+  echo "$script" | qsub &&JOB_SUBMITTED_SUCCESSFULLY="y" 
+fi
+
+
+if [[ "$JOB_SUBMITTED_SUCCESSFULLY" == "y" ]]; then
+	echo "Job submitted successfully. (Probably.)"
+	#Log jobs submitted to a file in the home directory
+	if [[ "$LOGGING" == "y" ]]; then
+  	if [[ "$JOB_LOG_FILE" == "" ]]; then
+    	echo "[`date`] $JOB_NAME" >> ~/jobs_submitted.log
+	  else
+  	  echo "[`date`] $JOB_NAME" >> $JOB_LOG_FILE
+  	fi
+	fi
+
+	#Archive job file submitted
+	if [[ "$ARCHIVING" == "y" ]]; then
+  	TIMESTAMP=`date +%s` #Note that %s is a GNU extension 
+  	if [[ "$JOB_BACKUP_DIR" == "" ]]; then
+    	cp $JOB_FILE ~/Job_Archive/$JOB_FILE.$TIMESTAMP
+    	gzip ~/Job_Archive/$JOB_FILE.$TIMESTAMP
+  	else
+    	cp $JOB_FILE $JOB_BACKUP_DIR/${JOB_FILE##*/}.$TIMESTAMP
+    	gzip $JOB_BACKUP_DIR/${JOB_FILE##*/}.$TIMESTAMP
+  	fi   
+	fi
+fi
+

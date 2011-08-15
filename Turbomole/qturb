@@ -1,0 +1,271 @@
+#!/bin/bash 
+#
+# This script submits Turbomole jobs.
+#
+
+# Sets a variable to a value if it isn't in the environment.
+ifnenv(){
+	varname=$1;
+	varvar=$2;
+	varvarname=`echo $\`echo $1\``;
+	eval "varcurvar=$varvarname";
+	if [[ -z "$varcurvar" ]]; then
+		eval "$varname=$varvar";
+	fi;
+}
+
+# These variables are not overwritten if they are in your environment.
+#  Therefore, if you want to change your defaults, set them there (e.g. in your .bashrc or something).
+#  You should also set PROJECT_NAME to your project label.
+
+# Quick things you might want to change:
+ifnenv JOB_TIME 24 # In hours
+ifnenv NODES 1
+ifnenv PROCS_PER_NODE 4
+
+#If you want the job id stuck on the end of the log file name, specify 'y' here.
+ifnenv JOB_APPEND_ID n
+
+#Set to a file and a directory respectively to alter the defaults ($HOME/jobs_submitted.log and $HOME/Job_Archive)
+ifnenv JOB_LOG_FILE $HOME/jobs_submitted.log
+ifnenv JOB_BACKUP_DIR $HOME/Job_Archive
+
+#Set to a file where jobs that finish will record time and name
+ifnenv JOB_FINISHED_FILE $HOME/jobs_finished.log
+
+#Set to "y" to enable logging or archiving
+ifnenv LOGGING y
+ifnenv ARCHIVING y
+
+###########################################################################
+#
+# No more settings, start processing command line arguments and such.
+#
+
+if [[ -z "$PROJECT_NAME" ]]; then
+	echo "You must set a project name in the PROJECT_NAME environment variable to submit Legion jobs." >&2
+	exit
+fi
+
+helpfile=`echo -e "\
+JOB='commands to run' ${0##*/} - Submit an arbitrary Turbomole job to the queue.\n\
+ ${0##*/} [-t hours|-T time ][-n name ][-p ] inputfile\n\
+ ${0##*/} -h\n\
+   -t   Set maximum time in hours. (Default:$JOB_TIME)\n\
+   -T   Set exact maximum time (HH:MM:SS)\n\
+   -n   Set name of job. (Default: filename less extension)\n\
+   -p   Do not submit to qsub, only show job file that would be submitted.\n\
+   -c   Check if optimised before running job, if is, cancel. \n\
+   -s   Use serial binaries, single processor (use with NumForce). \n\
+   -o   Use OpenMP binaries - one node, multiple processors. \n\
+   -D   Depend on a job (ID). \n\
+   -h   Print this help.\n"`
+
+#Get command line arguments
+while getopts  "n:t:T:D:dphcso" flag
+do
+	case "$flag" in
+		"t")
+			JOB_TIME=$OPTARG
+			;;
+		"T")
+			EXACT_JOB_TIME=$OPTARG
+			;;
+		"n")
+			JOB_NAME=$OPTARG
+			;;
+		"D")
+			DEPENDS_ON=$OPTARG
+			;;
+		"h")
+			echo -e "$helpfile"
+			exit
+			;;
+		"s")
+			USE_SERIAL_BINARIES="y"
+			;;
+		"o")
+			USE_SERIAL_BINARIES="y"
+			USE_OMP="y"
+			;;
+		"c")
+			CHECK_IF_OPTIMISED="y"
+			;;
+		"p")
+			NO_SUBMIT="y"
+			;;
+		*)
+			echo "Invalid argument specified." >&2
+			exit
+			;;
+	esac
+done 
+
+#Check for a job - this has to come after the option checking so that we can check for the -h option before.
+if [[ -z "$JOB" ]]; then
+	echo "No command to run: use the '-h' switch to check the arguments." >&2
+	exit
+fi
+
+#Possibly correct for any bad time input, and work out which type of time spec we have
+if [[ -z "$EXACT_JOB_TIME" ]]; then
+	JOB_TIME=${JOB_TIME#[^0-9]*}
+	EXACT_JOB_TIME=${JOB_TIME%[^0-9]*}:00:00
+fi
+
+#Make a string for the dependency line, if it exists
+if [[ -n "$DEPENDS_ON" ]]; then
+	DEPENDENCY_STRING="#PBS -W depend=afterok:$DEPENDS_ON"
+else
+	DEPENDENCY_STRING="# Job has no dependencies."
+fi
+
+#Use 0 as the default job priority
+if [[ "$JOB_PRIORITY" == "" ]]; then
+	JOB_PRIORITY=0
+fi
+
+#Make the job name the same as the name of the directory.
+JOB_TYPE=${JOB%% *} #aoforce, jobex, NumForce, etc
+JOB_NAME=`pwd`
+JOB_NAME=${JOB_NAME#$HOME}
+JOB_NAME=${JOB_NAME//\//_}
+JOB_NAME=${JOB_NAME#_}-$JOB_TYPE
+#JOB_NAME=TM-${JOB_NAME##*\/}-$JOB_TYPE
+
+#Set the number of processes Turbomole can use.
+let PARNODES=(NODES * PROCS_PER_NODE)
+
+# The template for the script file produced - note that it's all quoted,
+#  so anything you want to add has to be either escaped appropriately.
+PBSscript="\
+#!/bin/bash -l
+# This scriptfile was automatically generated.
+#
+# Job name
+#PBS -N $JOB_NAME
+#
+# Fair-share accounting info
+#PBS -A $PROJECT_NAME 
+#
+# Import selected env vars.
+#PBS -d `pwd -P`
+#
+# Specify bash as shell.
+#PBS -S /bin/bash
+#
+# Set priority if applicable (default: 0)
+#PBS -p $JOB_PRIORITY
+#
+$DEPENDENCY_STRING
+#
+# Specify parallel job and settings
+#PBS -l nodes=$NODES:ppn=$PROCS_PER_NODE
+#PBS -l walltime=$EXACT_JOB_TIME
+#PBS -l mem=8gb
+#### -l qos=parallel  #Apparently no longer useful - it would be nice if we got told about this sort of thing
+#PBS -l naccesspolicy=singlejob
+
+# Merge error and out into file
+###  PBS -j oe 
+### -o \$PBS_JOBNAME.o\${PBS_JOBID%.qm01*}
+#PBS -o ${JOB_NAME%-$JOB_TYPE}.o\${PBS_JOBID%.qm01*}-$JOB_TYPE
+#PBS -e ${JOB_NAME%-$JOB_TYPE}.e\${PBS_JOBID%.qm01*}-$JOB_TYPE
+
+echo 'This job started with:'
+cat <<EXACTQUOTING
+$0 $@
+EXACTQUOTING
+
+# Set the current working directory to the current directory
+WORKDIR=\$PBS_O_WORKDIR
+cd \$WORKDIR
+
+ulimit -s unlimited
+export TURBOTMPDIR=\$TMPDIR
+export PARA_ARCH=MPI
+if [[ \"$USE_SERIAL_BINARIES\" == \"y\" ]]; then unset PARA_ARCH; fi
+export PARNODES=$PARNODES
+if [[ \"$USE_OMP\" == \"y\" ]]; then 
+	unset $PARNODES
+	OMP_NUM_THREADS=$PROCS_PER_NODE
+fi
+export TURBODIR=/shared/home/uccaiki/TURBOMOLE
+source \$TURBODIR/Config_turbo_env
+#export PATH=\$TURBODIR/bin/\`sysname\`:\$PATH
+
+# For dependent successive optimisation jobs - check whether is already done
+if [[ \"$CHECK_IF_OPTIMISED\" == \"y\" ]]; then
+	if [[ -f \"GEO_OPT_CONVERGED\" ]]; then
+			echo Optimisation has already completed, cancelling job.
+			exit 2
+	fi
+fi
+
+## End of environment configuration.
+echo Starting parallel job using $PARNODES slave tasks.
+date
+echo -n [job start: \`date +%s\`]
+echo
+$JOB
+echo
+echo Finished job.
+date
+echo -n [job end: \`date +%s\`]
+echo
+
+
+echo [\`date\`] $JOB_NAME finished in \`pwd -P\` >> $JOB_FINISHED_FILE
+
+"
+
+case `hostname -f` in
+	"login01.cu99.cluster"|"login02.cu99.cluster"|"login03.cu99.cluster"|"login04.cu99.cluster"|usertest??.cu99.cluster)
+	script=$PBSscript
+	;;
+	*)
+	echo "Warning - this is submitting a job from an unknown computer (possibly a compute node)." >&2
+	script=$PBSscript
+	;;
+esac
+
+
+####################################
+
+# Archive the job
+
+if [[ "$NO_SUBMIT" == "y" ]]; then
+	true
+else	
+	# (Note that %s is a GNU extension)
+	UNIXDATE=`date +%s`
+	ARCHIVE_DIR=arch-$UNIXDATE-${JOB%% *}
+
+	FILES=`ls` 
+	mkdir $ARCHIVE_DIR
+	cp -v $FILES $ARCHIVE_DIR
+fi
+
+####################################
+
+#Pipe the scriptfile into qsub
+
+if [[ "$NO_SUBMIT" == "y" ]]; then
+  echo "$script"  
+else  
+  echo "$script" | qsub &&JOB_SUBMITTED_SUCCESSFULLY="y" 
+fi
+
+
+if [[ "$JOB_SUBMITTED_SUCCESSFULLY" == "y" ]]; then
+	echo "Job submitted successfully. (Probably.)"
+	#Log jobs submitted to a file in the home directory
+	if [[ "$LOGGING" == "y" ]]; then
+  	if [[ "$JOB_LOG_FILE" == "" ]]; then
+    	echo "[`date`] $JOB_NAME" >> ~/jobs_submitted.log
+	  else
+  	  echo "[`date`] $JOB_NAME" >> $JOB_LOG_FILE
+  	fi
+	fi
+fi
+

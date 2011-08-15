@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+# Takes gradnorms from a Turbomole calculation and plots them with GNUplot
+# -Ian Kirker (uccaiki)
+
+if [[ ! -f "gradient" ]]; then
+	echo "No gradient file was found."
+	exit
+fi	
+
+tmpfile=/tmp/gradnorms-$$
+grep cycle gradient > $tmpfile
+gradlines=`cat $tmpfile | wc -l`
+
+if [[ "$gradlines" == "0" ]]; then 
+	echo "No cycles found."
+	exit
+fi
+
+
+# Example line
+#  cycle =    115    SCF energy =    -1317.0509381370   |dE/dxyz| =  0.004960
+sed -re 's_  cycle =[ ]+([0-9]+)[ ]+SCF energy =[ ]+([-]?[0-9]+\.[0-9]+)[ ]+\|dE.dxyz\| =[ ]+([0-9]+\.[0-9]+)_\1 \3_' $tmpfile > $tmpfile.tmp && mv $tmpfile.tmp $tmpfile
+
+/shared/ucl/apps/gnuplot/bin/gnuplot -persist <<INPUT
+set term x11; set logscale y 10; plot '$tmpfile' with linespoints title '|dE/dxyz|'; 
+INPUT
+
+/bin/rm $tmpfile
+

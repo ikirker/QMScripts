@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+#Get command line arguments
+while getopts  "hd:n:s:" flag
+do
+	case "$flag" in
+		"d")
+			if [[ -d "$OPTARG" ]]; then
+				cd $OPTARG
+			fi
+			;;
+		"h")
+			echo "Usage: $0 [-d directory]"
+			exit
+			;;
+		*)
+			echo "Invalid argument specified." >&2
+			return 1 
+			;;
+	esac
+done
+
+
+NEGATIVE_FREQS=`sdg -c -b  'vibrational spectrum' | awk '{ print $3; }' | sed -n '/^[-].*$/p' | wc -l`
+
+echo $NEGATIVE_FREQS
+

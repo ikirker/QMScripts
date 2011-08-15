@@ -1,0 +1,298 @@
+#!/bin/bash 
+#
+# This script checks, logs and submits Gaussian input files as jobs. 
+#
+
+# Sets a variable to a value if it isn't in the environment.
+ifnenv(){
+	varname=$1;
+	varvar=$2;
+	varvarname=`echo $\`echo $1\``;
+	eval "varcurvar=$varvarname";
+	if [[ -z "$varcurvar" ]]; then
+		eval "$varname=$varvar";
+	fi;
+}
+
+# These variables are not overwritten if they are in your environment.
+#  Therefore, if you want to change your defaults, set them there (e.g. in your .bashrc or something).
+# Quick things you might want to change:
+ifnenv JOB_TIME 24 # In hours
+ifnenv NODES 1
+ifnenv PROCS_PER_NODE 4
+
+if [[ -z "$PROJECT_NAME" ]]; then
+    echo "You must set the Project Name environment variable." >&2
+    exit
+fi
+
+#Set to the usual extension of your input file.
+INPUTEXTENSION="com"
+
+#If you want the job id stuck on the end of the log file name, specify 'y' here.
+ifnenv JOB_APPEND_ID n
+
+#Set to "y" to enable logging or archiving
+# Logging makes the script record the time and jobname to the log file below
+# Archiving makes the script be copied and compressed in the directory below
+ifnenv LOGGING y
+ifnenv ARCHIVING y
+
+#Set to a file and a directory respectively to alter the defaults ($HOME/jobs_submitted.log and $HOME/Job_Archive)
+ifnenv JOB_LOG_FILE $HOME/jobs_submitted.log
+ifnenv JOB_BACKUP_DIR $HOME/Job_Archive
+
+#Set to a file where jobs that finish will record time and name
+ifnenv JOB_FINISHED_FILE $HOME/jobs_finished.log
+
+#If set to "y", the script will not ask whether to quit
+# on a restart file name that doesn't end with .chk
+ifnenv EXIT_ON_BAD_CHK_SUFFIX n
+
+
+
+###########################################################################
+#
+# No more settings, start processing command line arguments and such.
+#
+
+if [[ "$1" == "" ]]; then
+	echo "No arguments provided - use \"qgau -h\" to get the syntax." >&2
+	exit;
+fi
+
+helpfile=`echo -e "\
+${0##*/} - Submit an Gaussian input file to the queue using g09.\n\
+ ${0##*/} [-t hours|-T time ][-n name ][-p ] inputfile\n\
+ ${0##*/} -h\n\
+   -t   Set maximum time in hours. (Default:$JOB_TIME)\n\
+   -T   Set exact maximum time (HH:MM:SS)\n\
+   -n   Set name of job. (Default: filename less extension)\n\
+   -d   Downgrade priority of job, e.g. for overnight jobs.\n\
+   -p   Do not submit to qsub, only show job file that would be submitted.\n\
+   -h   Print this help.\n"`
+
+#Get command line arguments
+while getopts  "n:t:T:D:dph" flag
+do
+	case "$flag" in
+		"t")
+			JOB_TIME=$OPTARG
+			;;
+		"T")
+			EXACT_JOB_TIME=$OPTARG
+			;;
+		"n")
+			JOB_NAME=$OPTARG
+			;;
+		"D")
+			DEPENDS_ON=$OPTARG
+			;;
+		"h")
+			echo -e "$helpfile"
+			exit
+			;;
+		"d")
+			JOB_PRIORITY="-1020"
+			;;
+		"p")
+			NO_SUBMIT="y"
+			;;
+		*)
+			echo "Invalid argument specified." >&2
+			exit
+			;;
+	esac
+done 
+
+#echo $OPTIND
+
+#Get the filename as the last argument
+let filenameIndex=$OPTIND-1
+shift $filenameIndex
+
+JOB_FILE=$1
+
+#Check it
+if [ ! -e "$JOB_FILE" ]; then 
+	echo "Input file does not exist." >&2
+	echo "File specified: \"$JOB_FILE\"" >&2
+
+	exit
+fi
+
+#Possibly correct for any bad time input, and work out which type of time spec we have
+if [[ -z "$EXACT_JOB_TIME" ]]; then
+	JOB_TIME=${JOB_TIME#[^0-9]*}
+	EXACT_JOB_TIME=${JOB_TIME%[^0-9]*}:00:00
+fi
+
+#Make a string for the dependency line, if it exists
+if [[ -n "$DEPENDS_ON" ]]; then
+	DEPENDENCY_STRING="#PBS -W depend=afterok:$DEPENDS_ON"
+else
+	DEPENDENCY_STRING="# Job has no dependencies."
+fi
+
+#Use 0 as the default job priority
+if [[ "$JOB_PRIORITY" == "" ]]; then
+	JOB_PRIORITY=0
+fi
+
+#Remove .in from the file ending for the run script
+JOB_FILE_NAME=${JOB_FILE%\.$INPUTEXTENSION}
+
+#Remove any directory data from the filename
+JOB_FILE_NAME=${JOB_FILE_NAME##*/}
+
+#Use the filename as the default job name
+if [[ "$JOB_NAME" == "" ]]; then 
+	JOB_NAME=G09-$JOB_FILE_NAME
+fi
+
+# Check the checkpoint file name
+CHKNAME=`grep '%chk=' $JOB_FILE`
+CHKNAME=${CHKNAME//\%chk=/}
+CHKNAME=${CHKNAME//\.chk/}
+
+toLower() {
+echo $1 | tr "[:upper:]" "[:lower:]"
+}
+
+# In Gaussian files with multiple links, there may be multiple checkpoint file specs.
+#  We have to iterate over them (also hence the more complex replacement above).
+for i in $CHKNAME; do
+	if [[ ! "$i" == "$JOB_FILE_NAME" ]]; then
+		echo -n "Warning: checkpoint file name is different to input filename - do you still wish to submit the input file? (y/N)"
+		read -n 1 answer
+		echo
+		answer=`toLower $answer `
+		if [[ ! "$answer" == "y" ]]; then
+			echo "Job was not submitted."
+			exit
+		fi
+	fi
+done
+	
+#Make sure the input file is executable
+if [[ ! "$NO_SUBMIT" == "y" ]]; then
+	if [[ ! -x $JOB_FILE ]]; then
+		chmod +x $JOB_FILE || { echo -e "Could not make input file executable - not submitting.\n" >&2 ; exit ; }
+	fi
+fi
+
+# Output file name
+if [[ "$JOB_APPEND_ID" == "y" ]]; then
+	JOB_OUTPUT_FILE=$JOB_FILE_NAME_\${PBS_JOBID%.qm01*}.log
+else
+	JOB_OUTPUT_FILE=$JOB_FILE_NAME.log
+fi
+
+
+# The template for the script file produced - note that it's all quoted,
+#  so anything you want to add has to be either escaped appropriately.
+PBSscript="\
+#!/bin/bash -l
+# This scriptfile was automatically generated.
+#
+# Job name
+#PBS -N $JOB_NAME
+#
+# Fair-share accounting info
+#PBS -A $PROJECT_NAME 
+#
+# Import selected env vars.
+#PBS -d `pwd -P`
+#
+# Specify bash as shell.
+#PBS -S /bin/bash
+#
+# Set priority if applicable (default: 0)
+#PBS -p $JOB_PRIORITY
+#
+$DEPENDENCY_STRING
+#
+# Specify parallel job and settings
+#PBS -l nodes=$NODES:ppn=$PROCS_PER_NODE
+#PBS -l walltime=$EXACT_JOB_TIME
+#PBS -l mem=8gb
+#PBS -l qos=parallel
+#PBS -l naccesspolicy=singlejob
+
+# Misconfigured OMP? In any case, this apparently has to be set to 1,
+#  or else ppn*OMP_NUM_THREADS threads will be spawned. Sound broken?
+export OMP_NUM_THREADS=1
+
+# Merge error and out into file
+#PBS -j oe 
+### -o \$PBS_JOBNAME.o\${PBS_JOBID%.qm01*}
+#PBS -o \$JOB_FILE_NAME.o\${PBS_JOBID%.qm01*}
+
+# Set the current working directory to the current directory
+WORKDIR=\$PBS_O_WORKDIR
+cd \$WORKDIR
+
+# Set the scratch space for this job
+export GAUSS_SCRDIR=\$TMPDIR
+
+#Get g09 environment variables
+module -v add pgi
+
+export g09root=/home/uccaiki/g09-legion
+. \$g09root/g09/bsd/g09.profile
+
+## End of environment configuration.
+
+date
+#Run the Gaussian executable
+# This logfile format is kind of annoying, but as long as GaussView 
+#  insists on being a little dim about file extensions, it kind of
+#  has to be this way.
+g09 <$JOB_FILE >$JOB_OUTPUT_FILE
+date
+
+echo \"[\`date\`] $JOB_FILE_NAME\" >> $JOB_FINISHED_FILE
+
+"
+
+case `hostname -f` in
+	"login01.cu99.cluster"|"login02.cu99.cluster"|"login03.cu99.cluster"|"login04.cu99.cluster")
+	script=$PBSscript
+	;;
+	*)
+	echo "This machine has not had a template job file configured." >&2
+	exit
+	;;
+esac
+
+#Pipe the scriptfile into qsub
+if [[ "$NO_SUBMIT" == "y" ]]; then
+  echo "$script"  
+else  
+  echo "$script" | qsub &&JOB_SUBMITTED_SUCCESSFULLY="y" 
+fi
+
+
+if [[ "$JOB_SUBMITTED_SUCCESSFULLY" == "y" ]]; then
+	echo "Job submitted successfully. (Probably.)"
+	#Log jobs submitted to a file in the home directory
+	if [[ "$LOGGING" == "y" ]]; then
+  	if [[ "$JOB_LOG_FILE" == "" ]]; then
+    	echo "[`date`] $JOB_NAME" >> ~/jobs_submitted.log
+	  else
+  	  echo "[`date`] $JOB_NAME" >> $JOB_LOG_FILE
+  	fi
+	fi
+
+	#Archive job file submitted
+	if [[ "$ARCHIVING" == "y" ]]; then
+  	TIMESTAMP=`date +%s` #Note that %s is a GNU extension 
+  	if [[ "$JOB_BACKUP_DIR" == "" ]]; then
+    	cp $JOB_FILE ~/Job_Archive/$JOB_FILE.$TIMESTAMP
+    	gzip ~/Job_Archive/$JOB_FILE.$TIMESTAMP
+  	else
+    	cp $JOB_FILE $JOB_BACKUP_DIR/${JOB_FILE##*/}.$TIMESTAMP
+    	gzip $JOB_BACKUP_DIR/${JOB_FILE##*/}.$TIMESTAMP
+  	fi   
+	fi
+fi

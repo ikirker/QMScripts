@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+t2x > /tmp/allmol-$$ && jmol /tmp/allmol-$$ && rm /tmp/allmol-$$
+

@@ -1,0 +1,8 @@
+#!/bin/bash
+in=$1
+out=${1%21}41
+
+echo $in
+echo $out
+
+echo -e "inputfile $in\noutputfile $out\nendinput\n" | $ADFBIN/densf

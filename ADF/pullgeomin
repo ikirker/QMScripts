@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+
+#use warnings;
+
+# Gets the last geometry from an ADF INput file and prints it to the screen in cleaned format.
+$step_to_take = 0;
+if ("$ARGV[0]" eq "-n")
+{
+	shift(@ARGV);
+	$step_to_take=$ARGV[0];
+	shift(@ARGV);
+}
+
+if ($ARGV[0] eq "")
+{
+	print("Usage: pullgeomin file\n");
+	exit; 
+}
+
+#Open specified file for input.
+open(IN, "<$ARGV[0]");
+
+$out_string = "";
+$in_atoms_section = 0;
+$atoms = 0;
+
+# Loop over every line in the file.
+while (<IN>) {
+	if ( $_ =~ /^[ \t]*[Ee][Nn][Dd]/ )
+	{
+		$in_atoms_section = 0;
+	}
+
+	if ( $in_atoms_section == 1 )
+	{
+		$out_string = $out_string . $_;
+		$atoms = $atoms + 1;
+	}
+	
+	if ( $_ =~ /^[ \t]*[Aa][Tt][Oo][Mm][Ss]/ )
+	{
+		$in_atoms_section = 1;
+		$out_string = "";
+	}	
+	
+}
+
+print("$atoms\n_\n");
+print("$out_string");
+

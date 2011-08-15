@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+#Check we have the binaries we need
+which cosmoprep > /dev/null
+if [[ ! "$?" == "0" ]]; then
+	return $?
+fi	
+
+while [[ -d "$1" ]]; do 
+	dname=${1%/}
+	mkdir $dname-COSMOSP
+	cd $dname
+	cpc ../$dname-COSMOSP
+	cd ../$dname-COSMOSP
+	echo -e '\n\n\n\n\n\n\n\nr all b\n*\n' | cosmoprep
+	shift
+done
+
+

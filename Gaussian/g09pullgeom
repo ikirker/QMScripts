@@ -1,0 +1,133 @@
+#!/usr/bin/perl
+
+sub atomSymbol{
+	my ($z) = @_;
+	#print("Called atomSymbol with $z\n");
+	@symbols=("Xx","H", "He","Li","Be","B", "C", "N", "O", "F", "Ne","Na","Mg","Al","Si","P", "S", "Cl","Ar","K", "Ca","Sc","Ti","V", "Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","Asc","Se","Br","Kr","Rb","Sr","Y", "Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I", "Xe","Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W", "Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","At","Rn","Fr","Ra","Ac","Th","Pa","U", "Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Uub","Uut","Uuq","Uup","Uuh");
+	#print("Returning $symbols[$z]\n");
+	return $symbols[$z];
+}
+
+
+
+
+#use warnings;
+
+# Gets the last geometry from an ADF output file and prints it to the screen in cleaned format.
+$step_to_take = 0;
+if ("$ARGV[0]" eq "-n")
+{
+	shift(@ARGV);
+	$step_to_take=$ARGV[0];
+	shift(@ARGV);
+}
+
+if ($ARGV[0] eq "")
+{
+	print("Usage: pullgeom [-n step] file\n");
+	exit; 
+}
+
+#Open specified file for input.
+open(IN, "<$ARGV[0]");
+
+$out_string = "";
+$in_cart_section = 0;
+$in_geom_section = 0;
+$atom_count = 0;
+$geometry_count = 0;
+$separator_counter=0;
+
+# Loop over every line in the file.
+while (<IN>) {
+	if ( $_ =~ /^[ \t]+Standard orientation\:/ )
+	{
+		#print("Found Cartesian Coords\n");
+		$in_cart_section = 1;
+		$out_string = "";
+		$geometry_count = $geometry_count + 1;
+	}	
+	
+	if ( $_ =~ /^ -----([-]+)/ )
+	{
+
+		if ($in_cart_section == 1)
+		{
+			#print("Hit Separator (count $separator_counter)\n");
+			$separator_counter = $separator_counter + 1;
+			if ($separator_counter == 2)
+			{
+				#print("In Geom Section\n");
+				$in_geom_section = 1;
+			} elsif ($separator_counter == 3)
+			{
+				#print("Geom Section Reset\n");
+				$in_geom_section = 0;
+				$in_cart_section = 0;
+				$separator_counter = 0;
+				
+				#If a step count was specified, and this is it, then stop.
+				if (($step_to_take != 0) and ($step_to_take == $geometry_count))
+				{
+					last;
+				}	
+			}
+		}
+	}
+
+  # Can just capture all the info, bohr distances and all, but this is not preferable.
+	#if ( ( $in_geom_section == 1 ) and ( $this_line_is_separator == 0 ) )
+	#{
+	#	$out_string=$out_string.$_;
+	#}
+
+  # Capture atom position descriptions
+	if ( $_ =~ /^(?: +)(\d+)(?: +)(\d+)(?: +)(?:\d+)(?: +)([-]{0,1}\d+\.\d+)(?: +)([-]{0,1}\d+\.\d+)(?: +)([-]{0,1}\d+\.\d+)/ )
+	{
+		#print("  Got regexp line, in_geom_section = $in_geom_section\n");
+		#print("$_"); # (Can check whether the regexp is working.)
+		if ( $in_geom_section == 1 )
+		{
+			$atoms[$1][0]=atomSymbol($2); #print(atomSymbol($2));
+			$atoms[$1][1]=$3;
+			$atoms[$1][2]=$4;
+			$atoms[$1][3]=$5;
+			if ( $atom_count < $1 ) { $atom_count = $1; }
+		}
+ 	}		
+
+}
+
+$out_string="";
+$i=1;
+while( $i<( $atom_count + 1 ) )
+{
+	$j=0;
+	while($j<4)
+	{
+		if ( $atoms[$i][$j] =~ /(^.)/ )
+		{
+		  #Pad positive numbers
+			if ( "$1" =~ /(^\d)/ )
+			{
+				$out_string=$out_string."  ".$atoms[$i][$j];
+			} else {
+			  $out_string=$out_string." ".$atoms[$i][$j];
+			}
+
+			#Pad elements with only one letter.
+		  if ( ( $j==0 ) and ( length($atoms[$i][$j])<2 ) )
+			{
+				$out_string=$out_string." ";
+			}
+		}	
+		$j=$j+1;
+	}
+	$out_string=$out_string."\n";
+	$i=$i+1;
+}
+
+#print("$atom_count\n");
+print("$#atoms\n_\n");
+print("$out_string");
+

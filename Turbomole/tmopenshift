@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+echo Before:
+grep -e '$scforbitalshift' -e '$scfdamp' control
+sed -e 's/closedshell=/automatic=/' -e 's/scfdamp   start=0.700/scfdamp  start=3.5/' control > control.tmp && mv control.tmp control && echo Done.
+echo After:
+grep -e '$scforbitalshift' -e '$scfdamp' control
+
+
+

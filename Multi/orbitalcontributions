@@ -222,8 +222,10 @@ def parseOptions():
           help="only print energies as tsv")
   parser.add_option("-m", "--nocomps", action="store_true", dest="skip_components", default=False,
           help="don't print detailed components")
-  parser.add_option("-l", action="store", type="float", dest="lb", default=None, help="Lower energy bound")
-  parser.add_option("-u", action="store", type="float", dest="ub", default=None, help="Upper energy bound")
+  parser.add_option("-l", action="store", type="float", dest="min_energy", default=None, help="Lower energy bound")
+  parser.add_option("-u", action="store", type="float", dest="max_energy", default=None, help="Upper energy bound")
+  parser.add_option("--minocc", action="store", type="float", dest="minocc", default=None, help="Minimum occupation")
+  parser.add_option("--maxocc", action="store", type="float", dest="maxocc", default=None, help="Maximum occupation")
   parser.add_option("-i", action="store", type="int", dest="lineIndent", default=None, help="Indent orbital lines")
   parser.add_option("-d", "--remove_degeneracy", action="store_true", dest="remove_degeneracy", default=False,
           help="remove degenerate orbitals")
@@ -373,6 +375,37 @@ def readG09orbitalContributions(lines):
   
   return MOlist
 
+def filterByList(thing, filters):
+  for f in filters:
+    if f(thing) == False:
+      return False
+  return True
+
+def filterMOlist(MOlist, options):
+  #MOmaker  = collections.namedtuple("MO", "energy occupancy spin number symmetry components")
+  filterList = list()
+  
+  if options.alpha:
+    filterList.append( lambda MO: MO.spin=="1" )
+  if options.beta:
+    filterList.append( lambda MO: MO.spin=="2" )
+  if options.occ:
+    filterList.append( lambda MO: float(MO.occ) > 0.5 )
+  if options.minocc:
+    filterList.append( lambda MO: float(MO.occ) > options.minocc )
+  if options.maxocc:
+    filterList.append( lambda MO: float(MO.occ) < options.maxocc )
+  if options.min_energy:
+    filterList.append( lambda MO: float(MO.energy) > options.min_energy )
+  if options.max_energy:
+    filterList.append( lambda MO: float(MO.energy) < options.max_energy )
+ 
+  filterByListLambda = lambda x: filterByList(x,filterList)
+  MOlist = filter(filterByListLambda, MOlist)
+
+  #if options.remove_degeneracy: # This is a two-orbital operation, so it can't be in the list
+  return MOlist
+
 
 def main():
 
@@ -409,42 +442,7 @@ def main():
   #  
   print("Read in "+str(len(MOlist))+" MOs.")
 
-  #Exclude MOs by spin
-  if options.alpha or options.beta:
-    #Iterate over MOs, including them in the new list if the spin is right
-    MOlist2 = list()
-    if options.alpha:
-      spinCheck = "1"
-    else:
-      spinCheck = "2"
-    
-    for MO in MOlist:
-      if MO.spin == spinCheck:
-        MOlist2.append(MO)
-    
-    MOlist = MOlist2
-
-  #Exclude MOs by occupation
-  if options.occ:
-    MOlist2 = list()
-    for MO in MOlist:
-      if float(MO.occupancy) >= 0.5:
-        MOlist2.append(MO)
-
-    MOlist = MOlist2
-
-  #Exclude MOs by energy
-  if options.ub or options.lb:
-    MOlist2 = list()
-    for MO in MOlist:
-      if options.ub != None:
-        if float(MO.energy) > options.ub:
-          continue
-      if options.lb != None:
-        if float(MO.energy) < options.lb:
-          continue
-      MOlist2.append(MO)
-    MOlist = MOlist2  
+  MOlist = filterMOlist(MOlist, options)
 
   if options.remove_degeneracy:
     MOlist2 = list()

@@ -390,15 +390,15 @@ def filterMOlist(MOlist, options):
   if options.beta:
     filterList.append( lambda MO: MO.spin=="2" )
   if options.occ:
-    filterList.append( lambda MO: float(MO.occupancy) > 0.5 )
+    filterList.append( lambda MO: float(MO.occupancy) >= 0.5 )
   if options.minocc:
-    filterList.append( lambda MO: float(MO.occupancy) > options.minocc )
+    filterList.append( lambda MO: float(MO.occupancy) >= options.minocc )
   if options.maxocc:
-    filterList.append( lambda MO: float(MO.occupancy) < options.maxocc )
+    filterList.append( lambda MO: float(MO.occupancy) <= options.maxocc )
   if options.min_energy:
-    filterList.append( lambda MO: float(MO.energy) > options.min_energy )
+    filterList.append( lambda MO: float(MO.energy) >= options.min_energy )
   if options.max_energy:
-    filterList.append( lambda MO: float(MO.energy) < options.max_energy )
+    filterList.append( lambda MO: float(MO.energy) <= options.max_energy )
  
   filterByListLambda = lambda x: filterByList(x,filterList)
   MOlist = filter(filterByListLambda, MOlist)

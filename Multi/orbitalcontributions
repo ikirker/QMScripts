@@ -390,11 +390,11 @@ def filterMOlist(MOlist, options):
   if options.beta:
     filterList.append( lambda MO: MO.spin=="2" )
   if options.occ:
-    filterList.append( lambda MO: float(MO.occ) > 0.5 )
+    filterList.append( lambda MO: float(MO.occupancy) > 0.5 )
   if options.minocc:
-    filterList.append( lambda MO: float(MO.occ) > options.minocc )
+    filterList.append( lambda MO: float(MO.occupancy) > options.minocc )
   if options.maxocc:
-    filterList.append( lambda MO: float(MO.occ) < options.maxocc )
+    filterList.append( lambda MO: float(MO.occupancy) < options.maxocc )
   if options.min_energy:
     filterList.append( lambda MO: float(MO.energy) > options.min_energy )
   if options.max_energy:
@@ -403,7 +403,7 @@ def filterMOlist(MOlist, options):
   filterByListLambda = lambda x: filterByList(x,filterList)
   MOlist = filter(filterByListLambda, MOlist)
 
-  #if options.remove_degeneracy: # This is a two-orbital operation, so it can't be in the list
+  #if options.remove_degeneracy: # This is a two-orbital operation, so it can't be in the list above
   return MOlist
 
 
@@ -459,7 +459,7 @@ def main():
   MOlist.sort(key=lambda MO: float(MO.energy))
 
   for MO in MOlist:
-    spinLabel = "+" if (int(MO.spin) == 1) else "-"  if (int(MO.spin) == 2) else "+-"
+    spinLabel = "+" if (int(MO.spin) == 1) else "-" if (int(MO.spin) == 2) else "+-"
     sys.stdout.write("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
     sys.stdout.write("%s \n" % (componentString(MO.components,options))) 
   

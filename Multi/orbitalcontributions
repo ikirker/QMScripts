@@ -4,6 +4,7 @@ import re
 import sys
 import getopt
 import collections
+import math
 from optparse import OptionParser
 
 # Our (global) MO and SFO tuple specs
@@ -82,103 +83,131 @@ def componentString(MOcomponents, options):
   return returnString
 
 
-def makeSVGscale( MOlist, SVGfilename="out.svg", componentLabels=True):
+def getMOcolour( MO, options ):
+  if options.colour_by == "occ" or options.colour_by == None:
+    occ = float(MO.occupancy)
+    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#"+repr(0x0000FF + occ*0x00FF00))
+  # Tricky to account for all cases
+  #if options.colour_by == "sym":
+  #  return { 'A': 'blue',
+  # The above, plus red if the orbital isn't occupied
+  #if options.colour_by == "symocc":
+  if options.colour_by == "atom":
+    True
+  if options.colour_by == "metal":
+    True
+  # The above are waiting for me to separate component string generation and component list generation
+  
+
+def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
 
   #Iterate over MOs, writing lines according to energy, and saving max and min
   #  Note - SVG origin is at top left
   maxEnergy = -50
   minEnergy = 50
-  lines = ""
-  texts = ""
-  scaling = 200
-  origin = 5
-  linesIndent = 100
-  linesMultipleGap = 10
-  linesLength = 50
-  linesMultipleTolerance = 0.003 # In Hartrees
-  scl = lambda x: int((origin-x)*scaling) #Scale energies to pixel places
-  colourList = (["black", "blue", "red", "purple"])
+  lines = list()
 
-  #TODO: Quick and dirty hack for multiple files
-  if externalIndent != None:
-    linesIndent = externalIndent
+  series = 0
+  for MOlist in listOfMOlists:
+    series = series + 1
+    lastEnergy = 0
+    multiplicity = 0
+    for MO in MOlist:
+      thisEnergy = float(MO.energy)
+      if maxEnergy < thisEnergy:
+        maxEnergy = thisEnergy
+      if minEnergy > thisEnergy:
+        minEnergy = thisEnergy
 
-  lastEnergy = 0
-  multiplicity = 0
-  for MO in MOlist:
-    thisEnergy = float(MO.energy)
-    if maxEnergy < thisEnergy:
-      maxEnergy = thisEnergy
-    if minEnergy > thisEnergy:
-      minEnergy = thisEnergy
+      #if abs(lastEnergy - thisEnergy) < linesMultipleTolerance:
+      #  multiplicity = multiplicity + 1
+      #else:
+      #  multiplicity = 0
+      #lastEnergy = thisEnergy  
+      
+      #colour = colourList[multiplicity]
+      AM = collections.namedtuple('A', 'colour_by')
+      a = AM(colour_by='occ')
+      colour = getMOcolour(MO, a ) # Quick hack to test
+      # We can't place the lines on the y axis until we know the overall energy minimum and maximum, so add them to a list for later
+      if componentLabels == True:
+        label = MO.energy + "  " + componentString(MO.components)
+        lines.append([series, MO.energy, colour, label])
+      else:
+        lines.append([series, MO.energy, colour])
 
-    ## If more than one orb at the same energy, put them next to each other
-    #if abs(lastEnergy - thisEnergy) < linesMultipleTolerance:
-    #  multiplicity = multiplicity + 1
-    #else:
-    #  multiplicity = 0
-    #lastEnergy = thisEnergy  
-    #
-    #xVal1 = linesIndent + linesLength * multiplicity + linesMultipleGap * multiplicity
-    #xVal2 = linesIndent + linesLength * (multiplicity + 1) + linesMultipleGap * multiplicity
-    #yVal = scl(float(MO.energy))
-    
-    #if float(MO.occupancy) > 0.9:
-    #  colour = "black"
-    #elif float(MO.occupancy) > 0.1:
-    #  colour = "purple"
-    #else:  
-    #  colour = "red"
-    
-    # If more than one orb at the same energy, colour them differently
-    if abs(lastEnergy - thisEnergy) < linesMultipleTolerance:
-      multiplicity = multiplicity + 1
-    else:
-      multiplicity = 0
-    lastEnergy = thisEnergy  
-    
-    xVal1 = linesIndent 
-    xVal2 = linesIndent + linesLength 
-    yVal = scl(float(MO.energy))
-    
-    colour = colourList[multiplicity]
+  # Construct internal margins - distances to the graphbox
+  #  Measurements are kind of in pixels (scalable pixels, I guess?)
 
-    lines = lines + "<line x1='" + str(xVal1) + "' x2='" + str(xVal2) + "' y1='" + str(yVal) + "' y2='" + str(yVal) + "' stroke = '"+ colour + "' stroke-width = '1' /><!--"+MO.energy+"-->"+"\n"  
-    
-    if componentLabels == True:
-      texts = texts + "<text fill='black' font-family='Bitstream Vera Sans Mono' font-size='11' x='" + str(xVal2) + "' y='" + str(yVal) + "' transform='scale(0.5,1)'> E=" + MO.energy + "  " + componentString(MO.components) + "</text>\n"
+  leftMargin = 150 # We draw the y axis in the left margin, so it should be big
+  bottomMargin = 150 # And labels in the bottom margin
+  rightMargin = 50
+  topMargin = 100
 
+  lineLength = 50
+  lineWidth = 1
+  lineGapBetweenSeries=125
+  
+  pageWidth = leftMargin + rightMargin + series * lineLength + lineGapBetweenSeries * (series+1)
+  pageHeight = 800 # This is our main scaling reference point.
+
+  graphBoxWidth = pageWidth - (leftMargin + rightMargin)
+  graphBoxHeight = pageHeight - (topMargin + bottomMargin)
+
+  scaleMax = 0.5 * math.ceil(maxEnergy*2)
+  scaleMin = 0.5 * math.floor(minEnergy*2)
+  
+  # This function converts the MO energies into y coordinates
+  scaleFactor = (graphBoxHeight / (scaleMax - scaleMin))
+  eScale = lambda y: int (topMargin + (-1 * (float(y) - scaleMax) * scaleFactor ))
+
+  # I think now we can actually make some SVG. \o/
+
+  #lineMultipleTolerance = 0.003 # In whatever units the MO.energy is in
+  
+  SVGText = "" #Build up the text in this variable. 
+  
   #Make scale
-  scaleText = ""
-  scaleIndent = 50
-  scaleTextIndent = scaleIndent - 20
-  scalePips   = 0.5
+  scalePips   = 0.5 # In energy units
   scalePipLength = 3 
   scaleMultiplier = 1
   scaleColour='black'
-  scaleStroke = 1
+  scaleStroke = 2 
   scaleTextSize = 18
-  axisText = "Energy (Hartrees)"
-  scaleMax = int(maxEnergy)
-  scaleMin = int(minEnergy)
+  scaleFont = "Bitstream Vera"
+  axisText = "Energy (eV)"
 
   # The axis
-  scaleText = ( "<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
-    (scaleIndent, scaleIndent, scl(scaleMin), scl(scaleMax), scaleColour, scaleStroke) )
+  SVGText = ( "<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
+    (leftMargin, leftMargin, eScale(scaleMin), eScale(scaleMax), scaleColour, scaleStroke) )
 
   # Count down from scaleMax to scaleMin, putting pips on the axis.
   pip = scaleMax
-  while pip > scaleMin:
-    scaleText += ("<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
-        (scaleIndent - scalePipLength, scaleIndent, scl(pip), scl(pip), scaleColour, scaleStroke) )
-    scaleText += ( "<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' transform='scale(0.5,1)'> %-.3f </text>\n" %
-        (scaleTextIndent, scl(pip) + scaleTextSize/2, scaleColour, "Bitstream Vera Sans Mono", scaleTextSize, pip)  )
+  while pip >= scaleMin:
+    SVGText += ("<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%d' />\n" %
+        (leftMargin - scalePipLength, leftMargin, eScale(pip), eScale(pip), scaleColour, scaleStroke) )
+    # This version makes the text half as wide. It looks a bit weird.
+    #SVGText += ( "<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' transform='scale(0.5,1)'> %-.1f </text>\n" %
+    SVGText += ( "<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' text-anchor='end'> %-.1f </text>\n" %
+        (leftMargin - scalePipLength * 2 , eScale(pip) + scaleTextSize/3, scaleColour, scaleFont, scaleTextSize, pip)  )
     pip -= scalePips
 
-  #TODO:  multiple files
-  if externalIndent != None:
-    scaleText = ""
+  # Label the axis
+  SVGText+= ("<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' text-anchor='middle' transform='rotate(-90 %d %d)'> %s </text>\n" %
+      (leftMargin/2, pageHeight/2, scaleColour, scaleFont, scaleTextSize, leftMargin/2, pageHeight/2, axisText) )
 
+  # Now draw lines (this doesn't do labels yet)
+  for line in lines:
+    SVGText += ("<line x1='%d' x2='%d' y1='%d' y2='%d' stroke='%s' stroke-width='%f' /><!--%s-->\n" %
+                 ( (leftMargin + line[0] * lineGapBetweenSeries + (line[0] - 1) * lineLength),
+                   (leftMargin + line[0] * lineGapBetweenSeries + line[0] * lineLength),
+                   eScale(line[1]), eScale(line[1]), line[2], lineWidth, line[1]
+                 )
+               )
+
+
+  # Draw actual orbital points/lines
+  #lines = lines + "<line x1='" + str(xVal1) + "' x2='" + str(xVal2) + "' y1='" + str(yVal) + "' y2='" + str(yVal) + "' stroke = '"+ colour + "' stroke-width = '1' /><!--"+MO.energy+"-->"+"\n"  
 
   #Now we have all the bits, open and write the SVG file
   SVGfile = open(SVGfilename, "w")
@@ -187,19 +216,22 @@ def makeSVGscale( MOlist, SVGfilename="out.svg", componentLabels=True):
 
   # Fit the viewbox to the max and min
   SVGfile.write("""<svg version="1.1" baseProfile="full" \n\t xmlns="http://www.w3.org/2000/svg" \n""" + 
-              """\t xmlns:xlink="http://www.w3.org/1999/xlink" \n\t xmlns:ev="http://www.w3.org/2001/xml-events" \n""" +
-          """\t zoomAndPan="magnify" \n""" + 
-          """\t viewBox = "%d %d %d %d" > \n""" % ( 0, 
-                               int((origin-maxEnergy)*scaling)-10,
-                               400 ,
-                             int((origin-minEnergy)*scaling)+10 ) )
+                """\t xmlns:xlink="http://www.w3.org/1999/xlink" \n\t xmlns:ev="http://www.w3.org/2001/xml-events" \n""" +
+                """\t zoomAndPan="magnify" \n""" + 
+                """\t viewBox = "%d %d %d %d" > \n""" % ( 0, 
+                               pageWidth,
+                               0,
+                               pageHeight ) )
   
-  # Put a line at the origin
-  SVGfile.write('<line x1="5" x2="550" y1="' + str(origin*scaling) + '" y2="' + str(origin*scaling) + '" stroke="red" stroke-width="1" style="stroke-dasharray: 5, 3;" />'+"\n")
-  SVGfile.write(lines)
-  SVGfile.write(texts)
-  SVGfile.write(scaleText)
+  SVGfile.write(SVGText)
+                
+  # Put a line at the origin if it's in the graph
+  if maxEnergy > 0 and minEnergy < 0:
+    SVGfile.write('<line x1="5" x2="550" y1="' + str(eScale(0)) + '" y2="' + str(eScale(0)) + '" stroke="red" stroke-width="1" style="stroke-dasharray: 5, 3;" />'+"\n")
+
+  # And we're done. Finish up and close the file.
   SVGfile.write("</svg>")
+  SVGfile.close()
   return
 
 def printTSVenergies(MOlist):
@@ -467,7 +499,7 @@ def main():
     printTSVenergies(MOlist)
   
   if options.svgFilename:  
-    makeSVGscale(MOlist, options.svgFilename, False)
+    makeSVGscale([MOlist], options.svgFilename, False)
 
 if __name__ == "__main__":
   main()  

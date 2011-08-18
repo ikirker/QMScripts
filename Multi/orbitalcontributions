@@ -219,8 +219,8 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
                 """\t xmlns:xlink="http://www.w3.org/1999/xlink" \n\t xmlns:ev="http://www.w3.org/2001/xml-events" \n""" +
                 """\t zoomAndPan="magnify" \n""" + 
                 """\t viewBox = "%d %d %d %d" > \n""" % ( 0, 
-                               pageWidth,
                                0,
+                               pageWidth,
                                pageHeight ) )
   
   SVGfile.write(SVGText)

@@ -11,10 +11,6 @@ from optparse import OptionParser
 MOmaker  = collections.namedtuple("MO", "energy occupancy spin number symmetry components")
 SFOmaker = collections.namedtuple("SFO", "percent number otype energy occupancy fragmentNumber fragmentName")
 
-# TODO: Quick and dirty hack - ugh
-externalIndent = None
-
-
 # Part of the ADF read-in process
 def processEntry( match, matchType, currentSpin, MO=None ):
   g = match.groups() #Quick shorthand
@@ -86,7 +82,7 @@ def componentString(MOcomponents, options):
 def getMOcolour( MO, options ):
   if options.colour_by == "occ" or options.colour_by == None:
     occ = float(MO.occupancy)
-    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#"+repr(0x0000FF + occ*0x00FF00))
+    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#%06x" % (int(0x0000FF + occ*0x00FF00)))
   # Tricky to account for all cases
   #if options.colour_by == "sym":
   #  return { 'A': 'blue',
@@ -146,7 +142,7 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
 
   lineLength = 50
   lineWidth = 1
-  lineGapBetweenSeries=125
+  lineGapBetweenSeries=75
   
   pageWidth = leftMargin + rightMargin + series * lineLength + lineGapBetweenSeries * (series+1)
   pageHeight = 800 # This is our main scaling reference point.
@@ -218,10 +214,8 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
   SVGfile.write("""<svg version="1.1" baseProfile="full" \n\t xmlns="http://www.w3.org/2000/svg" \n""" + 
                 """\t xmlns:xlink="http://www.w3.org/1999/xlink" \n\t xmlns:ev="http://www.w3.org/2001/xml-events" \n""" +
                 """\t zoomAndPan="magnify" \n""" + 
-                """\t viewBox = "%d %d %d %d" > \n""" % ( 0, 
-                               0,
-                               pageWidth,
-                               pageHeight ) )
+                """\t width="%d" height="%d" >\n""" % (pageWidth, pageHeight) )
+                #"""\t viewBox = "%d %d %d %d" > \n""" % ( 0, 0, pageWidth, pageHeight ) )
   
   SVGfile.write(SVGText)
                 
@@ -258,7 +252,6 @@ def parseOptions():
   parser.add_option("-u", action="store", type="float", dest="max_energy", default=None, help="Upper energy bound")
   parser.add_option("--minocc", action="store", type="float", dest="minocc", default=None, help="Minimum occupation")
   parser.add_option("--maxocc", action="store", type="float", dest="maxocc", default=None, help="Maximum occupation")
-  parser.add_option("-i", action="store", type="int", dest="lineIndent", default=None, help="Indent orbital lines")
   parser.add_option("-d", "--remove_degeneracy", action="store_true", dest="remove_degeneracy", default=False,
           help="remove degenerate orbitals")
   parser.add_option("--only-show", action="store", type="string", dest="only_show", default=None,
@@ -439,67 +432,65 @@ def filterMOlist(MOlist, options):
   return MOlist
 
 
+def getFileType(filename):
+  extensions = {'out': 'adf', 'log': 'g09'}
+  reFilename = re.compile("(.*)\.(%s)$" % ('|'.join(extensions.keys())))
+  maFilename = reFilename.match(filename)
+  if maFilename==None:
+    sys.stderr.write("File '%s' has inappropriate extension.")
+    sys.exit(2)
+  return extensions[maFilename.group(2)]
+
 def main():
 
   (options, args) = parseOptions()
 
-  #TODO: Quick and dirty hack for multiple files
-  global externalIndent
-  if options.lineIndent != None:
-    externalIndent = options.lineIndent
+  listOfMOlists = list()
 
-  #TODO Replace this with an iteration later
-  inputFile = args[0]
+  for inputFilename in args:
+    print("File: %s" %(inputFilename))  
+    inputFileType = getFileType(inputFilename)
+    inputFile = open(inputFilename, "r")
+    lines = inputFile.readlines()
 
-  #Check and get filetype
-  reFilename = re.compile("(.*)\.(out|log)$")
-  maFilename = reFilename.match(inputFile)
-  if maFilename==None:
-    sys.stderr.write("File has inappropriate extension - should be .out\n")
-    sys.exit(2)
-  
-  print(maFilename.group(1))
-  
-  file = open(inputFile,"r")
-  lines = file.readlines()
+    if inputFileType == 'adf':
+      MOlist = readADForbitalContributions(lines)
+    if inputFileType == 'g09':
+      MOlist = readG09orbitalContributions(lines)
+    
+    print("  Read in "+str(len(MOlist))+" MOs.")
+    MOlist = filterMOlist(MOlist, options)
+    
+    if options.remove_degeneracy:
+      MOlist2 = list()
+      lastEnergy=0
+      for MO in MOlist:
+        if MO.energy != lastEnergy: # Remember this is actually a string comparison
+          MOlist2.append(MO)
+        lastEnergy = MO.energy
+      MOlist = MOlist2    
+    
+    print("  Filtered to " + str(len(MOlist)) + " MOs.")
 
-  if maFilename.group(2) == "out":
-    MOlist = readADForbitalContributions(lines)
-  else:
-    MOlist = readG09orbitalContributions(lines)
+    #Sort the list of MOs by energy
+    MOlist.sort(key=lambda MO: float(MO.energy))
 
-  
-  #Check reading in
-  #print(MOlist)
-  #  
-  print("Read in "+str(len(MOlist))+" MOs.")
+    listOfMOlists.append(MOlist)
 
-  MOlist = filterMOlist(MOlist, options)
+    inputFile.close() 
 
-  if options.remove_degeneracy:
-    MOlist2 = list()
-    lastEnergy=0
+  for MOlist in listOfMOlists:
     for MO in MOlist:
-      if MO.energy != lastEnergy: # Remember this is actually a string comparison
-        MOlist2.append(MO)
-      lastEnergy = MO.energy
-    MOlist = MOlist2    
-
-  print("Filtered to " + str(len(MOlist)) + " MOs.")
-
-  #Sort the list of MOs by energy
-  MOlist.sort(key=lambda MO: float(MO.energy))
-
-  for MO in MOlist:
-    spinLabel = "+" if (int(MO.spin) == 1) else "-" if (int(MO.spin) == 2) else "+-"
-    sys.stdout.write("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
-    sys.stdout.write("%s \n" % (componentString(MO.components,options))) 
+      spinLabel = "+" if (int(MO.spin) == 1) else "-" if (int(MO.spin) == 2) else "+-"
+      sys.stdout.write("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
+      sys.stdout.write("%s \n" % (componentString(MO.components,options))) 
+    if options.tsv:
+      sys.stdout.write("--TSV--\n")
+      printTSVenergies(MOlist)
   
-  if options.tsv:
-    printTSVenergies(MOlist)
   
   if options.svgFilename:  
-    makeSVGscale([MOlist], options.svgFilename, False)
+    makeSVGscale(listOfMOlists, options.svgFilename, False)
 
 if __name__ == "__main__":
   main()  

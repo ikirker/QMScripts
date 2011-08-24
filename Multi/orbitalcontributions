@@ -82,7 +82,7 @@ def componentString(MOcomponents, options):
 def getMOcolour( MO, options ):
   if options.colour_by == "occ" or options.colour_by == None:
     occ = float(MO.occupancy)
-    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#%06x" % (int(0x0000FF + occ*0x00FF00)))
+    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#%06x" % (int(0x0000FF + occ*0x008800)))
   # Tricky to account for all cases
   #if options.colour_by == "sym":
   #  return { 'A': 'blue',
@@ -95,7 +95,7 @@ def getMOcolour( MO, options ):
   # The above are waiting for me to separate component string generation and component list generation
   
 
-def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
+def makeSVGscale( listOfMOlists, options, componentLabels=True):
 
   #Iterate over MOs, writing lines according to energy, and saving max and min
   #  Note - SVG origin is at top left
@@ -122,9 +122,7 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
       #lastEnergy = thisEnergy  
       
       #colour = colourList[multiplicity]
-      AM = collections.namedtuple('A', 'colour_by')
-      a = AM(colour_by='occ')
-      colour = getMOcolour(MO, a ) # Quick hack to test
+      colour = getMOcolour(MO, options) 
       # We can't place the lines on the y axis until we know the overall energy minimum and maximum, so add them to a list for later
       if componentLabels == True:
         label = MO.energy + "  " + componentString(MO.components)
@@ -136,12 +134,12 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
   #  Measurements are kind of in pixels (scalable pixels, I guess?)
 
   leftMargin = 150 # We draw the y axis in the left margin, so it should be big
-  bottomMargin = 150 # And labels in the bottom margin
+  bottomMargin = 100 # And labels in the bottom margin
   rightMargin = 50
-  topMargin = 100
+  topMargin = 50
 
   lineLength = 50
-  lineWidth = 1
+  lineWidth = 0.5
   lineGapBetweenSeries=75
   
   pageWidth = leftMargin + rightMargin + series * lineLength + lineGapBetweenSeries * (series+1)
@@ -201,12 +199,25 @@ def makeSVGscale( listOfMOlists, SVGfilename="out.svg", componentLabels=True):
                  )
                )
 
+  # Labels
+  if options.graph_labels:
+    labelCount = 0
+    for label in options.graph_labels.split(","):
+      labelCount+=1
+      SVGText+=("<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' text-anchor='middle'> %s </text>\n" %
+                 ( leftMargin + labelCount * lineGapBetweenSeries + (labelCount - 0.5) * lineLength,
+                   pageHeight - (bottomMargin/2), scaleColour, scaleFont, scaleTextSize, label
+                 )
+               )
 
-  # Draw actual orbital points/lines
-  #lines = lines + "<line x1='" + str(xVal1) + "' x2='" + str(xVal2) + "' y1='" + str(yVal) + "' y2='" + str(yVal) + "' stroke = '"+ colour + "' stroke-width = '1' /><!--"+MO.energy+"-->"+"\n"  
+  # Title
+  if options.graph_title:
+    SVGText+=("<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' text-anchor='middle'> %s </text>\n" %
+               ( pageWidth/2, 2/3 * topMargin, scaleColour, scaleFont, scaleTextSize+1, options.graph_title )
+              )
 
   #Now we have all the bits, open and write the SVG file
-  SVGfile = open(SVGfilename, "w")
+  SVGfile = open(options.svgFilename, "w")
   SVGfile.write("""<?xml version="1.0" standalone="no"?>\n"""+
                 """<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n""")
 
@@ -237,11 +248,21 @@ def parseOptions():
   usage = "usage: %prog [options] arg1 ..."
   parser = OptionParser(usage=usage)
   parser.add_option("-s", "--svg", action="store", type="string", dest="svgFilename", default=None, 
-                    help="write SVG diagram to FILE", metavar="FILE")
+                    help="write SVG diagram to FILE", metavar="file")
+  parser.add_option("--colourby", action="store", type="string", dest="colour_by", default=None, 
+          help="colour orbital points on plot by PARAM", metavar="param")
+  parser.add_option("--graphlabels", action="store", type="string", dest="graph_labels", default=None,
+          help="labels for each series on an SVG plot", metavar="labels")
+  parser.add_option("--graphtitle", action="store", type="string", dest="graph_title", default=None,
+          help="title of SVG plot", metavar="title")
   parser.add_option("-a", "--alpha", action="store_true", dest="alpha", default=False,
           help="only consider alpha spin orbitals")
   parser.add_option("-b", "--beta",  action="store_true", dest="beta", default=False,
           help="only consider beta spin orbitals")
+  parser.add_option("--nobeta", action="store_true", dest="nobeta", default=False,
+          help="remove beta spin orbitals (to get alpha and restricted)")
+  parser.add_option("--noalpha", action="store_true", dest="noalpha", default=False,
+          help="remove alpha spin orbitals (to get beta and restricted)")
   parser.add_option("-o", "--occ",   action="store_true", dest="occ", default=False,
           help="only consider occupied orbitals")
   parser.add_option("-t", "--tsv",   action="store_true", dest="tsv", default=False,
@@ -414,6 +435,10 @@ def filterMOlist(MOlist, options):
     filterList.append( lambda MO: MO.spin=="1" )
   if options.beta:
     filterList.append( lambda MO: MO.spin=="2" )
+  if options.noalpha:
+    filterList.append( lambda MO: MO.spin!="1" )
+  if options.nobeta:
+    filterList.append( lambda MO: MO.spin!="2" )
   if options.occ:
     filterList.append( lambda MO: float(MO.occupancy) >= 0.5 )
   if options.minocc:
@@ -490,7 +515,7 @@ def main():
   
   
   if options.svgFilename:  
-    makeSVGscale(listOfMOlists, options.svgFilename, False)
+    makeSVGscale(listOfMOlists, options, False)
 
 if __name__ == "__main__":
   main()  

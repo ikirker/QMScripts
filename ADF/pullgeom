@@ -1,117 +1,96 @@
-#!/usr/bin/perl
+#!/usr/bin/python
 
-#use warnings;
+import re
+import sys
+from optparse import OptionParser
 
-# Gets the last geometry from an ADF output file and prints it to the screen in cleaned format.
-$step_to_take = 0;
-if ("$ARGV[0]" eq "-n")
-{
-	shift(@ARGV);
-	$step_to_take=$ARGV[0];
-	shift(@ARGV);
-}
+def parseOptions():
+  usage = "usage: %prog [options] arg1 ..."
+  parser = OptionParser(usage=usage)
+  parser.add_option("-n", "--step", action="store", type="int", dest="step", default=None,
+                    help="get step number (default:last)", metavar="step_number")
+  parser.add_option("-a", "--all", action="store_true", dest="getEveryStep", default=False,
+                    help="get every step (e.g. for animation)")
+  (opts, args) = parser.parse_args()
 
-if ($ARGV[0] eq "")
-{
-	print("Usage: pullgeom [-n step] file\n");
-	exit; 
-}
+  if len(args) == 0:
+    parser.print_help()
+    sys.exit(2)
 
-#Open specified file for input.
-open(IN, "<$ARGV[0]");
+  return (opts,args)
 
-$out_string = "";
-$in_cart_section = 0;
-$in_geom_section = 0;
-$atom_count = 0;
-$geometry_count = 0;
 
-# Loop over every line in the file.
-while (<IN>) {
-	$this_line_is_separator=0;
-	if ( $_ =~ /^ Coordinates \(Cartesian\)/ )
-	{
-		#print("Found Cartesian Coords\n");
-		$in_cart_section = 1;
-		$out_string = "";
-		$geometry_count = $geometry_count + 1;
-	}	
-	
-	if ( $_ =~ /^ -----([-]+)/ )
-	{
-		$this_line_is_separator=1;
-		
-		if ( $in_cart_section == 1 )
-		{
-			#print("Found separator\n");
-			if ( $in_geom_section == 0 )
-			{
-				$in_geom_section = 1;
-			} else {
-				$in_geom_section = 0;
-				$in_cart_section = 0;
+def readGeomFromFile(filename, opts):
+  #Our strings and regexes:
+  strStartCoordBlock = " Coordinates (Cartesian)\n"
+  strSeparator       = " --------------------------------------------------------------------------------------------------------------\n" # There are 110 '-' in this.
+  reAtomPosition    = re.compile("^(?: +)(\d+) (\w{1,2})(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)([- ]{1}[0-9.]+)(?: +)([- ]{1}[0-9.-]+)(?: +)([- ]{1}[0-9.-]+)")
+  
+  #Example coordinate block (from ADF2010.02)
+  """
+ Coordinates (Cartesian)
+ =======================
 
-				#If a step count was specified, and this is it, then stop.
-				if (($step_to_take != 0) and ($step_to_take == $geometry_count))
-				{
-					last;
-				}	
-			}
-		}
-	}
+     Atom                    bohr                                 angstrom                 Geometric Variables
+                   X           Y           Z              X           Y           Z       (0:frozen, *:LT par.)
+ --------------------------------------------------------------------------------------------------------------
+     1 C       5.572927    3.243131   -8.891223       2.949066    1.716191   -4.705033      1       2       3
+[...]
+    77 H       2.080785    7.352714   -3.002506       1.101104    3.890889   -1.588858    229     230     231
+ --------------------------------------------------------------------------------------------------------------
+  """
 
-  # Can just capture all the info, bohr distances and all, but this is not preferable.
-	#if ( ( $in_geom_section == 1 ) and ( $this_line_is_separator == 0 ) )
-	#{
-	#	$out_string=$out_string.$_;
-	#}
+  inputFile = open(filename, "r")
+  if inputFile == None:
+    sys.stderr.write("Error: could not open file %s for reading.\n" % (filename))
+    sys.exit(2)
+  
+  geometries = list()
+  fileLines = inputFile.__iter__()
+  for line in fileLines:
+    if line == strStartCoordBlock:
+      # Found geometry block, skip header lines then begin sub loop to read atom info
+      fileLines.next() # ===========
+      fileLines.next() # Blank line
+      fileLines.next() # Atom bohr angstrom line
+      fileLines.next() # X Y Z X Y Z line
+      fileLines.next() # -----------
+      geometry = list()
+      for line in fileLines:
+        maAtom = reAtomPosition.match(line)
+        if maAtom == None:
+          if line == strSeparator:
+            # End of geometry block, go back to main loop
+            geometries.append(geometry)
+            break
+          sys.stderr.write("Error: supposed atom coordinate line did not match regex. Line follows:\n%s\n" % (line) )
+          sys.exit(2)
+        else:
+          geometry.append([maAtom.group(2), # Name
+                           maAtom.group(3), # X
+                           maAtom.group(4), # Y
+                           maAtom.group(5)])# Z
+  return geometries
 
-  # Capture atom position descriptions
-	if ( $_ =~ /^(?: +)(\d+) (\w{1,2})(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)([0-9.-]+)(?: +)([0-9.-]+)(?: +)([0-9.-]+)/ )
-	{
-	  # print("$_"); # (Can check whether the regexp is working.)
-		if ( $in_geom_section == 1 )
-		{
-			$atoms[$1][0]=$2;
-			$atoms[$1][1]=$3;
-			$atoms[$1][2]=$4;
-			$atoms[$1][3]=$5;
-			if ( $atom_count < $1 ) { $atom_count = $1; }
-		}
- 	}		
 
-}
+def printGeom(geometry, opts):
+  sys.stdout.write("%d\n_\n" % (len(geometry)))
+  for atomPosition in geometry:
+    sys.stdout.write("%-2s %s %s %s\n" % (atomPosition[0], atomPosition[1], atomPosition[2], atomPosition[3]))
 
-$out_string="";
-$i=1;
-while( $i<( $atom_count + 1 ) )
-{
-	$j=0;
-	while($j<4)
-	{
-		if ( $atoms[$i][$j] =~ /(^.)/ )
-		{
-		  #Pad positive numbers
-			if ( "$1" =~ /(^\d)/ )
-			{
-				$out_string=$out_string."  ".$atoms[$i][$j];
-			} else {
-			  $out_string=$out_string." ".$atoms[$i][$j];
-			}
+def main():
+  opts,args = parseOptions()
+  filename = args[0]
+  geometries = readGeomFromFile(filename,opts)
 
-			#Pad elements with only one letter.
-		  if ( ( $j==0 ) and ( length($atoms[$i][$j])<2 ) )
-			{
-				$out_string=$out_string." ";
-			}
-		}	
-		$j=$j+1;
-	}
-	$out_string=$out_string."\n";
-	$i=$i+1;
-}
+  sys.stderr.write("%d geometries read from file.\n" % (len(geometries)))
 
-#print("$atom_count\n");
-print("$#atoms\n_\n");
-print("$out_string");
+  if len(geometries) != 0:
+    if opts.getEveryStep == True:
+      for geometry in geometries:
+        printGeom(geometry, opts)
+    else:
+      printGeom(geometries[-1],opts)
 
+if __name__ == "__main__":
+  main()

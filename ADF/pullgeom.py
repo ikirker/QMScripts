@@ -1,0 +1,96 @@
+#!/usr/bin/python
+
+import re
+import sys
+from optparse import OptionParser
+
+def parseOptions():
+  usage = "usage: %prog [options] arg1 ..."
+  parser = OptionParser(usage=usage)
+  parser.add_option("-n", "--step", action="store", type="int", dest="step", default=None,
+                    help="get step number (default:last)", metavar="step_number")
+  parser.add_option("-a", "--all", action="store_true", dest="getEveryStep", default=False,
+                    help="get every step (e.g. for animation)")
+  (opts, args) = parser.parse_args()
+
+  if len(args) == 0:
+    parser.print_help()
+    sys.exit(2)
+
+  return (opts,args)
+
+
+def readGeomFromFile(filename, opts):
+  #Our strings and regexes:
+  strStartCoordBlock = " Coordinates (Cartesian)\n"
+  strSeparator       = " --------------------------------------------------------------------------------------------------------------\n" # There are 110 '-' in this.
+  reAtomPosition    = re.compile("^(?: +)(\d+) (\w{1,2})(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)(?:[0-9.-]+)(?: +)([- ]{1}[0-9.]+)(?: +)([- ]{1}[0-9.-]+)(?: +)([- ]{1}[0-9.-]+)")
+  
+  #Example coordinate block (from ADF2010.02)
+  """
+ Coordinates (Cartesian)
+ =======================
+
+     Atom                    bohr                                 angstrom                 Geometric Variables
+                   X           Y           Z              X           Y           Z       (0:frozen, *:LT par.)
+ --------------------------------------------------------------------------------------------------------------
+     1 C       5.572927    3.243131   -8.891223       2.949066    1.716191   -4.705033      1       2       3
+[...]
+    77 H       2.080785    7.352714   -3.002506       1.101104    3.890889   -1.588858    229     230     231
+ --------------------------------------------------------------------------------------------------------------
+  """
+
+  inputFile = open(filename, "r")
+  if inputFile == None:
+    sys.stderr.write("Error: could not open file %s for reading.\n" % (filename))
+    sys.exit(2)
+  
+  geometries = list()
+  fileLines = inputFile.__iter__()
+  for line in fileLines:
+    if line == strStartCoordBlock:
+      # Found geometry block, skip header lines then begin sub loop to read atom info
+      fileLines.next() # ===========
+      fileLines.next() # Blank line
+      fileLines.next() # Atom bohr angstrom line
+      fileLines.next() # X Y Z X Y Z line
+      fileLines.next() # -----------
+      geometry = list()
+      for line in fileLines:
+        maAtom = reAtomPosition.match(line)
+        if maAtom == None:
+          if line == strSeparator:
+            # End of geometry block, go back to main loop
+            geometries.append(geometry)
+            break
+          sys.stderr.write("Error: supposed atom coordinate line did not match regex. Line follows:\n%s\n" % (line) )
+          sys.exit(2)
+        else:
+          geometry.append([maAtom.group(2), # Name
+                           maAtom.group(3), # X
+                           maAtom.group(4), # Y
+                           maAtom.group(5)])# Z
+  return geometries
+
+
+def printGeom(geometry, opts):
+  sys.stdout.write("%d\n_\n" % (len(geometry)))
+  for atomPosition in geometry:
+    sys.stdout.write("%-2s %s %s %s\n" % (atomPosition[0], atomPosition[1], atomPosition[2], atomPosition[3]))
+
+def main():
+  opts,args = parseOptions()
+  filename = args[0]
+  geometries = readGeomFromFile(filename,opts)
+
+  sys.stderr.write("%d geometries read from file.\n" % (len(geometries)))
+
+  if len(geometries) != 0:
+    if opts.getEveryStep == True:
+      for geometry in geometries:
+        printGeom(geometry, opts)
+    else:
+      printGeom(geometries[-1],opts)
+
+if __name__ == "__main__":
+  main()

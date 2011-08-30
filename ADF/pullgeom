@@ -89,6 +89,10 @@ def main():
     if opts.getEveryStep == True:
       for geometry in geometries:
         printGeom(geometry, opts)
+    if opts.step:
+      actualStep = opts.step - 1 # Convert from 0 based to 1 based.
+      if len(geometries) > actualStep:
+        printGeom(geometries(actualStep,opts))
     else:
       printGeom(geometries[-1],opts)
 

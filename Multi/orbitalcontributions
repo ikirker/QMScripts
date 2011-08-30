@@ -213,7 +213,7 @@ def makeSVGscale( listOfMOlists, options, componentLabels=True):
   # Title
   if options.graph_title:
     SVGText+=("<text x='%d' y='%d' fill='%s' font-family='%s' font-size='%d' text-anchor='middle'> %s </text>\n" %
-               ( pageWidth/2, 2/3 * topMargin, scaleColour, scaleFont, scaleTextSize+1, options.graph_title )
+               ( pageWidth/2, 0.8 * topMargin, scaleColour, scaleFont, scaleTextSize+1, options.graph_title )
               )
 
   #Now we have all the bits, open and write the SVG file

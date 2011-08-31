@@ -5,7 +5,10 @@ A collection of scripts for use with QM codes
 Folders:
 
 * ADF/ contains scripts for use with the ADF (probably 2010.02) program, from http://scm.com/
+* AIMAll/ contains scripts for use with the AIMAll QTAIM program, from http://aim.tkgristmill.com/
+* DGrid/ contains scripts for use with DGrid 4.5, by Miroslav Kohout: http://www.cpfs.mpg.de/~kohout/dgrid.html
 * Gaussian/ contains scripts for use with the Gaussian program, probably version g09_a02, from http://www.gaussian.com/
 * Turbomole/ contains scripts for use with Turbomole 6, from http://cosmologic.de/
 * Multi/ contains scripts for use with more than one of the above.
 
+* TestFiles/ contains examples of files which should work with these scripts.

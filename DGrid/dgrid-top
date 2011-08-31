@@ -1,0 +1,179 @@
+#!/bin/bash 
+#
+# Obtains AIM Critical Point Data, removing the massive files necessary afterwards.
+#  (Designed for a queueing system, so you can queue up a bunch without worrying
+#   about the multigigabyte density map files filling your quota. You can set where
+#   it creates the files and uses them using the TMPDIR environment variable, but
+#   if you don't set that it defaults to /tmp.)
+#
+
+#Locations of executables
+DgridExe=`which dgrid-4.5`
+FormChk=`which formchk` # This is just so you can run the script directly on a .chk file, you can ignore otherwise
+DmpKF=`which dmpkf`
+
+#Command line options
+while getopts 'dr' OPTION
+do
+	case $OPTION in
+		d) dflag=1 #Dump Dgrid input files
+		;;
+		r) rflag=1 #Only save actual topology files
+		;;
+		h)
+		  echo -e "Options:\n  -d  Create input files for dgrid and quit.\n  -r  Don't copy back any of the working files.\n  -h  This help.\n"
+			exit
+			;;
+		?) 
+		  echo "Incorrect option."
+	 	  exit
+		;;
+	esac
+done
+shift $(($OPTIND - 1))
+
+
+#Select extensions by file extension
+INFILE=$1
+EXTENSION=${1##*\.}
+case $EXTENSION in
+	t21) MODE="adf"
+	     DGEXT="adf"
+		 OEXT="t21"
+		 TEXT="tt21"
+		 NAME=${INFILE%\.t21}
+	;;
+	chk) MODE="g09"
+	     DGEXT="g09"
+		 OEXT="chk"
+		 TEXT="fchk"
+		 NAME=${INFILE%\.chk}
+	;;
+esac
+
+#Create working directory in temporary storage
+TEMP=${TMPDIR:=/tmp}
+STARTDIR=`pwd -P`
+
+mkdir $TEMP/$$-$NAME
+OUR_WORKING_DIR=$TEMP/$$-$NAME  #This used to be shorter but I had some namespace collision issues :P
+cp $1 $OUR_WORKING_DIR/
+
+cd $OUR_WORKING_DIR
+
+#Create input files for dgrid
+echo "Creating dgrid step files..."
+cat >> rho.ctl <<EOF
+::Rho Step
+
+basis=$NAME.$DGEXT
+output=$NAME
+
+compute=rho
+
+mesh=0.05 4.0
+
+END
+
+EOF
+
+cat >> basins.ctl <<EOF
+::Density Basins
+
+property=$NAME.$DGEXT.rho_r
+crop    =$NAME.$DGEXT.rho_r 0.001
+integrate=$NAME.$DGEXT.rho_r
+
+output=.
+
+END
+
+EOF
+
+
+cat >> topology.ctl <<EOF
+::Topology Step
+
+property=$NAME.$DGEXT.rho_r.bsn
+
+output=.
+
+topology
+icl_graph=full
+
+END
+
+EOF
+
+#Check for stop step spitting out input files
+if [ "$dflag" ]
+then
+	echo "Dumping control files and stopping."
+	cp *.ctl $STARTDIR
+	rm -v $NAME.$OEXT
+	cd $STARTDIR
+	rmdir $OUR_WORKING_DIR
+	exit
+fi
+
+#Convert ADF or Gaussian output file to dgrid file
+echo "Creating dgrid-readable file..."
+if [[ "$MODE" == "adf" ]]; then
+	$DmpKF $1 > $NAME.tt21
+fi
+if [[ "$MODE" == "g09" ]]; then
+	$FormChk $1
+fi
+	
+echo "Done, starting dgrid calcs."
+
+#Run Dgrid with input files
+echo "--Basis [`date`]--"
+$DgridExe $NAME.$TEXT
+echo "--Rho [`date`]--"
+$DgridExe rho.ctl 
+echo "--Basins [`date`]--"
+$DgridExe basins.ctl
+echo "--Topology [`date`]--"
+$DgridExe topology.ctl
+echo "--Done [`date`]--"
+
+#Clean up
+echo "Clearing up temporary files:"
+rm -v  $NAME.$TEXT
+rm -v  $NAME.$OEXT
+
+#Some of the files are enormous and aren't relevant to the topology section
+#  once it's been calculated, so -r means we don't save them. 
+
+if [ "$rflag" ]
+then
+	cp $NAME.$DGEXT.rho_r.bsn.bas $STARTDIR/
+	cp $NAME.$DGEXT.rho_r.bsn.graph.str $STARTDIR/
+	rm -v $NAME.$DGEXT.rho_r*
+
+
+	rm -v $NAME.$DGEXT
+	rm -v $NAME.dg
+else
+	scp $NAME.* $STARTDIR/
+fi
+
+#Old version
+#if [ "$rflag" ]
+#then
+#	mv -v $NAME.$DGEXT.rho_r.bsn.bas $STARTDIR/
+#	mv -v $NAME.$DGEXT.rho_r.bsn.graph.str $STARTDIR/
+#	rm -v $NAME.$DGEXT.rho_r*
+#
+#
+#	rm -v $NAME.$DGEXT
+#	rm -v $NAME.dg
+#else
+#	mv -v  $NAME.* $STARTDIR/
+#fi
+
+rm -fv *.ctl
+cd $STARTDIR
+rmdir $OUR_WORKING_DIR
+

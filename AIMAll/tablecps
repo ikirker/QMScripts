@@ -1,0 +1,469 @@
+#!/usr/bin/python
+
+import re
+import sys
+from optparse import OptionParser
+import math
+# I have a dream, that one day man may be known not by the
+#  colour of his skin, but by his ability to have a bloody
+#  up to date version of Python. For now, the namedtuple
+#  function is included below instead of being imported from
+#  the collections module.
+#import collections # For named tuple, see below
+
+###################################
+#  Named tuple recipe
+#  This is in the collections
+#   module in more up-to-date
+#   versions of Python, but it's
+#   included here for system-
+#   proofing.
+###################################
+## {{{ http://code.activestate.com/recipes/500261/ (r15)
+from operator import itemgetter as _itemgetter
+from keyword import iskeyword as _iskeyword
+import sys as _sys
+
+def namedtuple(typename, field_names, verbose=False, rename=False):
+    """Returns a new subclass of tuple with named fields.
+
+    >>> Point = namedtuple('Point', 'x y')
+    >>> Point.__doc__                   # docstring for the new class
+    'Point(x, y)'
+    >>> p = Point(11, y=22)             # instantiate with positional args or keywords
+    >>> p[0] + p[1]                     # indexable like a plain tuple
+    33
+    >>> x, y = p                        # unpack like a regular tuple
+    >>> x, y
+    (11, 22)
+    >>> p.x + p.y                       # fields also accessable by name
+    33
+    >>> d = p._asdict()                 # convert to a dictionary
+    >>> d['x']
+    11
+    >>> Point(**d)                      # convert from a dictionary
+    Point(x=11, y=22)
+    >>> p._replace(x=100)               # _replace() is like str.replace() but targets named fields
+    Point(x=100, y=22)
+
+    """
+
+    # Parse and validate the field names.  Validation serves two purposes,
+    # generating informative error messages and preventing template injection attacks.
+    if isinstance(field_names, basestring):
+        field_names = field_names.replace(',', ' ').split() # names separated by whitespace and/or commas
+    field_names = tuple(map(str, field_names))
+    if rename:
+        names = list(field_names)
+        seen = set()
+        for i, name in enumerate(names):
+            if (not min(c.isalnum() or c=='_' for c in name) or _iskeyword(name)
+                or not name or name[0].isdigit() or name.startswith('_')
+                or name in seen):
+                    names[i] = '_%d' % i
+            seen.add(name)
+        field_names = tuple(names)
+    for name in (typename,) + field_names:
+        if not min(c.isalnum() or c=='_' for c in name):
+            raise ValueError('Type names and field names can only contain alphanumeric characters and underscores: %r' % name)
+        if _iskeyword(name):
+            raise ValueError('Type names and field names cannot be a keyword: %r' % name)
+        if name[0].isdigit():
+            raise ValueError('Type names and field names cannot start with a number: %r' % name)
+    seen_names = set()
+    for name in field_names:
+        if name.startswith('_') and not rename:
+            raise ValueError('Field names cannot start with an underscore: %r' % name)
+        if name in seen_names:
+            raise ValueError('Encountered duplicate field name: %r' % name)
+        seen_names.add(name)
+
+    # Create and fill-in the class template
+    numfields = len(field_names)
+    argtxt = repr(field_names).replace("'", "")[1:-1]   # tuple repr without parens or quotes
+    reprtxt = ', '.join('%s=%%r' % name for name in field_names)
+    template = '''class %(typename)s(tuple):
+        '%(typename)s(%(argtxt)s)' \n
+        __slots__ = () \n
+        _fields = %(field_names)r \n
+        def __new__(_cls, %(argtxt)s):
+            return _tuple.__new__(_cls, (%(argtxt)s)) \n
+        @classmethod
+        def _make(cls, iterable, new=tuple.__new__, len=len):
+            'Make a new %(typename)s object from a sequence or iterable'
+            result = new(cls, iterable)
+            if len(result) != %(numfields)d:
+                raise TypeError('Expected %(numfields)d arguments, got %%d' %% len(result))
+            return result \n
+        def __repr__(self):
+            return '%(typename)s(%(reprtxt)s)' %% self \n
+        def _asdict(self):
+            'Return a new dict which maps field names to their values'
+            return dict(zip(self._fields, self)) \n
+        def _replace(_self, **kwds):
+            'Return a new %(typename)s object replacing specified fields with new values'
+            result = _self._make(map(kwds.pop, %(field_names)r, _self))
+            if kwds:
+                raise ValueError('Got unexpected field names: %%r' %% kwds.keys())
+            return result \n
+        def __getnewargs__(self):
+            return tuple(self) \n\n''' % locals()
+    for i, name in enumerate(field_names):
+        template += '        %s = _property(_itemgetter(%d))\n' % (name, i)
+    if verbose:
+        print template
+
+    # Execute the template string in a temporary namespace
+    namespace = dict(_itemgetter=_itemgetter, __name__='namedtuple_%s' % typename,
+                     _property=property, _tuple=tuple)
+    try:
+        exec template in namespace
+    except SyntaxError, e:
+        raise SyntaxError(e.message + ':\n' + template)
+    result = namespace[typename]
+
+    # For pickling to work, the __module__ variable needs to be set to the frame
+    # where the named tuple is created.  Bypass this step in enviroments where
+    # sys._getframe is not defined (Jython for example) or sys._getframe is not
+    # defined for arguments greater than 0 (IronPython).
+    try:
+        result.__module__ = _sys._getframe(1).f_globals.get('__name__', '__main__')
+    except (AttributeError, ValueError):
+        pass
+
+    return result
+
+# I removed the module unit test here - it checks for __main__
+
+## end of http://code.activestate.com/recipes/500261/ }}}
+#''' #This is just to fix vim's syntax highlighting
+class colours:
+  GREEN   = '\033[32m'
+  RED     = '\033[31m'
+  BLUE    = '\033[34m'
+  MAGENTA = '\033[35m'
+  YELLOW  = '\033[33m'
+  CYAN    = '\033[36m'
+  RESET   = '\033[0m'
+
+  def disable(self):
+    self.GREEN   = ''
+    self.RED     = ''
+    self.BLUE    = ''
+    self.MAGENTA = ''
+    self.YELLOW  = ''
+    self.CYAN    = ''
+    self.RESET   = ''
+
+CPMaker = namedtuple('CP', ' number x y z signature type atoms rho delSqRho ellip V G K L delSqV delSqVen delSqVrep delSqG delSqK')
+
+# I freely admit this may be a little silly. Efficient, though.
+ElementListMaker = namedtuple('ElementList', 'H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn')
+ZList = ElementListMaker(*range(1,113))
+
+CoordMaker = namedtuple('Coordinates', 'x y z')
+
+def dist(p, q):
+  return math.sqrt((p.x-q.x)**2 + (p.y-q.y)**2 + (p.z-q.z)**2)
+
+
+def tabulateCPs(CPs):
+  print(" Number    Rho                Del Squared Rho    Ellipticity        K                  Signature  Type     Atoms")
+  
+  for oneCP in CPs:
+    #sortedAtoms = ' '.join( sorted( oneCP.atoms.split(), key=lambda x: -1 * getattr(ZList, x.rstrip('1234567890')) ) )
+    sortedAtoms = ' '.join( ('%-5s' % i) for i in sorted( oneCP.atoms.split(), key=lambda atomLabel: -1 * getattr(ZList, atomLabel.rstrip('1234567890')) ) )
+
+    if oneCP.type == 'NACP':
+      colour = colours.CYAN
+    elif oneCP.type == 'BCP':
+      colour = colours.GREEN
+    elif oneCP.type == 'RCP':
+      colour = colours.YELLOW
+    elif oneCP.type == 'CCP':
+      colour = colours.RED
+
+    print("%s%9s  %17s  %17s  %17s  %17s  %7s    %5s   %s%s" % 
+        (colour, oneCP.number, oneCP.rho, oneCP.delSqRho, oneCP.ellip, oneCP.K, oneCP.signature, oneCP.type, sortedAtoms, colours.RESET))
+  return
+
+def quickXLtable(CPs):
+  reAnC = re.compile("((?:Th|Pa|U|Np|Pu|Am|Cm)\d+ C\d+|C\d+ (?:Th|Pa|U|Np|Pu|Am|Cm)\d+)[ \t]*$")
+  for oneCP in CPs:
+    if reAnC.match(oneCP.atoms) != None:
+      print(oneCP.type + "  " + oneCP.atoms)
+      sys.stdout.write("%s\n%s\n%s\n%s\n" % (oneCP.rho, oneCP.delSqRho, oneCP.ellip, oneCP.K))
+  
+  reCC  = re.compile("(C\d+ C\d+)[ \t]*$")
+  for oneCP in CPs:
+    if reCC.match(oneCP.atoms) != None:
+      print(oneCP.type + "  " + oneCP.atoms)
+      sys.stdout.write("%s\n%s\n%s\n%s\n" % (oneCP.rho, oneCP.delSqRho, oneCP.ellip, oneCP.K))
+  return
+
+def printRCPcoords(CPs):
+  for oneCP in CPs:
+    if oneCP.type == 'RCP':
+      print("%9s %-17f %-17f %-17f %s" % (oneCP.number, float(oneCP.x), float(oneCP.y), float(oneCP.z), oneCP.atoms))
+  return
+
+def printCPcoords(CPs):
+  sys.stdout.write("Type\tAtoms\tX\tY\tZ\n")
+  CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
+  for CP in CPs:
+    sys.stdout.write("%s\t%s\t%.9f\t%.9f\t%.9f\n" % (CP.type, ' '.join(sorted(CP.atoms.split())), float(CP.x), float(CP.y), float(CP.z)))
+  return
+
+def findBCPcoords(CPs, bothAtoms):
+  atoms = bothAtoms.split(",")
+  oneWay = ("%s %s" % (atoms[0],atoms[1]))
+  otherWay = ("%s %s" % (atoms[1],atoms[0]))
+  found = False
+
+  for oneCP in CPs:
+    if ( ( oneCP.atoms == oneWay ) or ( oneCP.atoms == otherWay ) ):
+      print("CP: #%s (%.9f\t%.9f\t%.9f) Atoms: %s" % (oneCP.number, float(oneCP.x), float(oneCP.y), float(oneCP.z), oneCP.atoms))
+      found = True
+  
+  if found == False:
+    print("No BCP found with these atoms.")
+  return
+
+#Excel pastable format
+def TSV(CPs):
+  CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
+  #sortedAtoms = ' '.join( ('%-5s' % i) for i in sorted( oneCP.atoms.split(), key=lambda atomLabel: -1 * getattr(ZList, atomLabel.rstrip('1234567890')) ) )
+  sys.stdout.write("Type\tAtoms\tRho\tDelSqRho\tEllip\tK\n")
+  for CP in CPs:
+    sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (CP.type, ' '.join(sorted(CP.atoms.split())), CP.rho, CP.delSqRho, CP.ellip, CP.K))
+  return
+
+def readCoords(file):
+  """ Read the atomic coordinates from the sumfile."""
+  coords=dict()
+  
+  reAtomicCoord = re.compile("^([^ ]+)[ ]+([^ ]+)[ ]+([^ ]+)[ ]+([^ ]+)[ ]+([^ \n]+)[ ]*$")
+  reBlankLine = re.compile("^[^A-Za-z0-9]*$")
+  
+  bohrPerAngstrom = 1.889726
+  
+  # Make sure the file is reset to the beginning, and start looking for the coords
+  file.seek(0)
+  lines=file.readlines()
+  linesIterator = lines.__iter__()
+  for line in linesIterator:
+    if line.startswith("Nuclear Charges and Cartesian Coordinates:"):
+      linesIterator.next()
+      linesIterator.next()
+      linesIterator.next()
+      
+      # Once we've found the right spot, just read in the coords and then skip out
+      for line in linesIterator:
+        maLine = reBlankLine.match(line)
+        if maLine != None:
+          return coords
+        maLine = reAtomicCoord.match(line)
+        if maLine != None:
+          coords[maLine.group(1)] = CoordMaker(float(maLine.group(3))/bohrPerAngstrom, 
+                                               float(maLine.group(4))/bohrPerAngstrom, 
+                                               float(maLine.group(5))/bohrPerAngstrom)
+          continue
+        sys.stderr.write("Error in reading coords.")
+        sys.exit(5)
+
+
+def printBondLengthsVSBCPdata(CPs, coords):
+  CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
+  #sortedAtoms = ' '.join( ('%-5s' % i) for i in sorted( oneCP.atoms.split(), key=lambda atomLabel: -1 * getattr(ZList, atomLabel.rstrip('1234567890')) ) )
+  sys.stdout.write("Atoms\tBond Length(A)\tRho\tDelSqRho\tEllip\tK\n")
+  for CP in CPs:
+    if CP.type == "BCP":
+      (A,B) = CP.atoms.split()
+      bondLength = dist(coords[A], coords[B])
+      sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\n" % (' '.join(sorted(CP.atoms.split())), bondLength, CP.rho, CP.delSqRho, CP.ellip, CP.K))
+  return
+
+def printEnergyDensityRatios(CPs):
+  CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
+  sys.stdout.write("Atoms\tBond Length(A)\tRho\tDelSqRho\tEllip\tK\tV\tG\tV/G\n")
+  for CP in CPs:
+    sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" %
+                     (
+                       ' '.join(sorted(CP.atoms.split())),
+                       CP.type, CP.rho, CP.delSqRho, CP.K, CP.V, CP.G, repr(float(CP.V)/float(CP.G))
+                     ) 
+                    )
+  return
+
+def readCPs(file):
+  file.seek(0) # Make sure it's reset to the beginning
+  
+  reBlankLine = re.compile("^[ \t]*$")
+  reNewCP = re.compile("CP# (\d+)[ \t]+Coords = ([ -]{0,1}\d.\d+E[+-]\d\d) ([ -]{0,1}\d.\d+E[+-]\d\d) ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reType = re.compile("[ \t]+Type = \(3,([-+]\d)\) (\w+) ([A-Za-z 0-9]+)")
+  reEllip = re.compile("[ \t]+Bond Ellipticity = ([ -]{0,1}\d.\d+E[+-]\d\d|NA)")
+  reRho     = re.compile("[ \t]+Rho = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqRho  = re.compile("[ \t]+DelSqRho = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reV         = re.compile("[ \t]+V = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reG         = re.compile("[ \t]+G = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reK         = re.compile("[ \t]+K = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reL         = re.compile("[ \t]+L = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqV    = re.compile("[ \t]+DelSqV = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqVen  = re.compile("[ \t]+DelSqVen = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqVrep = re.compile("[ \t]+DelSqVrep = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqG    = re.compile("[ \t]+DelSqG = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reDelSqK    = re.compile("[ \t]+DelSqK = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+
+  lines = file.readlines()
+  
+  CPs = list()
+  oneCP = None
+
+  for line in lines:
+    maLine = reNewCP.match(line)
+    if maLine != None:
+      if oneCP != None:
+        #print(oneCP.keys())
+        CPs.append(CPMaker(**oneCP)) #Converts a dictionary into a namedtuple and appends it to the list
+        
+      oneCP = dict()
+      oneCP['number'] = maLine.group(1)
+      oneCP['x'] = maLine.group(2)
+      oneCP['y'] = maLine.group(3)
+      oneCP['z'] = maLine.group(4)
+      continue
+    
+    maLine = reType.match(line)
+    if maLine != None:
+      oneCP['signature'] = maLine.group(1)
+      oneCP['type'] = maLine.group(2)
+      oneCP['atoms'] = maLine.group(3)
+      continue
+    
+    maLine = reRho.match(line)
+    if maLine != None:
+      oneCP['rho'] = maLine.group(1)
+      continue
+
+    maLine = reDelSqRho.match(line)
+    if maLine != None:
+      oneCP['delSqRho'] = maLine.group(1)
+      continue
+
+    maLine = reEllip.match(line)
+    if maLine != None:
+      oneCP['ellip'] = maLine.group(1)
+      continue
+    
+    maLine = reV.match(line)  
+    if maLine != None:
+      oneCP['V'] = maLine.group(1)
+      continue
+    
+    maLine = reG.match(line)  
+    if maLine != None:
+      oneCP['G'] = maLine.group(1)
+      continue
+    
+    maLine = reK.match(line)  
+    if maLine != None:
+      oneCP['K'] = maLine.group(1)
+      continue
+    
+    maLine = reL.match(line)  
+    if maLine != None:
+      oneCP['L'] = maLine.group(1)
+      continue
+    
+    maLine = reDelSqV.match(line)  
+    if maLine != None:
+      oneCP['delSqV'] = maLine.group(1)
+      continue
+    
+    maLine = reDelSqVen.match(line)  
+    if maLine != None:
+      oneCP['delSqVen'] = maLine.group(1)
+      continue
+    
+    maLine = reDelSqVrep.match(line)  
+    if maLine != None:
+      oneCP['delSqVrep'] = maLine.group(1)
+      continue
+    
+    maLine = reDelSqG.match(line)  
+    if maLine != None:
+      oneCP['delSqG'] = maLine.group(1)
+      continue
+    
+    maLine = reDelSqK.match(line)  
+    if maLine != None:
+      oneCP['delSqK'] = maLine.group(1)
+      continue
+    
+  #Finished reading in lines, just add the last CP
+  if oneCP != None:
+    CPs.append(CPMaker(**oneCP)) #Converts a dictionary into a namedtuple and appends it to the list
+  
+  sys.stderr.write(str(len(CPs)) + " CPs read in.\n")
+  
+  return CPs
+
+def tabulateOneFile(filename, options):
+  sumFile = open(filename, "r")
+  
+  CPs = readCPs(sumFile)
+  atomicCoords = readCoords(sumFile)
+
+  sumFile.close()  
+
+  # Filters
+  if options.cp_type:
+    CPs = filter(lambda x :(x.type)==(options.cp_type.upper()+"CP"), CPs)
+  if options.atom:
+    CPs = filter(lambda x :options.atom in x.atoms, CPs) # This doesn't quite work properly yet - should add word boundaries.
+
+  if options.ancp==True:
+    quickXLtable(CPs)
+  elif options.find_rcps==True:
+    printRCPcoords(CPs)
+  elif options.find_bcp:
+    findBCPcoords(CPs, options.find_bcp)
+  elif options.tsv:
+    TSV(CPs)
+  elif options.blr:
+    printBondLengthsVSBCPdata(CPs, atomicCoords)
+  elif options.energydensities:
+    printEnergyDensityRatios(CPs)
+  elif options.coords:
+    printCPcoords(CPs)
+  else:
+    tabulateCPs(CPs)
+
+  return
+
+def parseOptions():
+  parser = OptionParser()
+  parser.add_option("--ancp", action="store_true", default=False, dest="ancp", help="print An-C and C-C BCP params only in an Excel-pastable format")
+  parser.add_option("--find_rcps", action="store_true", default=False, dest="find_rcps", help="print RCPs and their coordinates")
+  parser.add_option("--find_bcp", action="store", default=False, dest="find_bcp", metavar="atom1,atom2", help="find BCP between two atoms")
+  parser.add_option("--atom", action="store", default=False, dest="atom", metavar="atom", help="find any CP containing this atom")
+  parser.add_option("--tsv", action="store_true", default=False, dest="tsv", help="print BCPs in a format that you can easily copy into Excel")
+  parser.add_option("--blr", action="store_true", default=False, dest="blr", help="print BCP data vs bond length in a pastable format")
+  parser.add_option("--energydensities", action="store_true", default=False, dest="energydensities", help="print energy density ratios")
+  parser.add_option("--coords", action="store_true", default=False, dest="coords", help="print CP coords only in TSV format")
+  parser.add_option("-t", action="store", default=False, dest="cp_type", metavar="cp_type", help="specify type of CP - b/r/c/na")
+
+  (options, args) = parser.parse_args()
+  return (options,args)
+
+def main():
+  (options, args) = parseOptions()
+
+  for sumFilename in args:
+    tabulateOneFile(sumFilename, options)
+
+  sys.exit(0)
+
+
+if __name__ == '__main__':
+  main()  

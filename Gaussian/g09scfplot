@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# A little too simple - doesn't handle Optimisations well, for example.
+
+TempDir=/tmp/g09scfplot-$$
+TempFile=g09scfdata-$$
+mkdir $TempDir
+grep 'Delta-E' $1 | sed -e 's/[ ]\+/ /g' | cut -d ' ' -f5 >$TempDir/$TempFile
+PlotInstructions=" set term x11;
+set logscale y 10;
+plot \"$TempDir/$TempFile\" using (abs(\$1)) with linespoints
+"
+
+echo $PlotInstructions | gnuplot -persist
+
+rm $TempDir/$TempFile
+rmdir $TempDir
+

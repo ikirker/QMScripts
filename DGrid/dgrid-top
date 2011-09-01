@@ -1,6 +1,6 @@
 #!/bin/bash 
-#
 # Obtains AIM Critical Point Data, removing the massive files necessary afterwards.
+##
 #  (Designed for a queueing system, so you can queue up a bunch without worrying
 #   about the multigigabyte density map files filling your quota. You can set where
 #   it creates the files and uses them using the TMPDIR environment variable, but

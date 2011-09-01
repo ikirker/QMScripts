@@ -1,8 +1,15 @@
 #!/usr/bin/env bash 
+# Views the last geometry of a Turbomole calculation in Gaussview.
+##
+
+GVIEWCMD=`which gview`
+if [[ "$GVIEWCMD" == "" ]]; then
+  echo "Cannot find GaussView - set the GVIEWCMD variable in the script.">&2
+fi
 
 tmpfile=/tmp/finalcom-$$.com
 echo -ne '#\n\n(No title)\n\n0 1\n' > $tmpfile && \
 t2x -c |sed -n '3~1p' >> $tmpfile && \
-gv $tmpfile && \
+$GVIEWCMD $tmpfile && \
 rm $tmpfile
 

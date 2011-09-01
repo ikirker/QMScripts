@@ -1,0 +1,7 @@
+pullgeom     	# Pulls cartesian XYZ format geometries out of ADF output.
+pullgeomin     	# Gets the last geometry from an ADF INput file and prints it to the screen in XYZ format.
+pullgeom.pl     	
+adfoptgraph     	
+mkt41     	# Simply makes a t41 density file from a t21 file without having to mess about with densf input files.
+loc.gexpl     	
+qadf     	# This script checks, logs and submits our ADF script files to a PBS queue system. (Legion version.)

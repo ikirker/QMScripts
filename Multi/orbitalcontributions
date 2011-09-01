@@ -50,6 +50,9 @@ def componentString(MOcomponents, options):
     if options.only_show != None:
       if SFO.fragmentName != options.only_show:
         continue
+    elif options.dont_show != None:
+      if (","+SFO.fragmentName+",") in (","+options.dont_show+","): # Added commas for specificity
+        continue
     if (SFO.fragmentName + " " + SFO.otype) not in dictComponents:
       dictComponents[SFO.fragmentName + " " + SFO.otype] = float(SFO.percent)
     else:
@@ -276,7 +279,9 @@ def parseOptions():
   parser.add_option("-d", "--remove_degeneracy", action="store_true", dest="remove_degeneracy", default=False,
           help="remove degenerate orbitals")
   parser.add_option("--only-show", action="store", type="string", dest="only_show", default=None,
-          help="Only show percentage components of ATOM", metavar="ATOM")
+          help="Only show percentage components of a certain atom", metavar="atom")
+  parser.add_option("--dont-show", metavar="atom1,atom2,...", action="store", type="string", dest="dont_show", default=None,
+          help="Don't show percentage components of certain atoms")
   #I'd like to add this but first TODO I'd have to convert the energies to actually be numbers below
   #  and it'd involve a fair bit of fiddling
   #parser.add_option("-u", "--units", action="store", type="string", dest="units", default="eV",

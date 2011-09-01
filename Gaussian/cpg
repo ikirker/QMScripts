@@ -1,4 +1,7 @@
 #! /usr/bin/perl
+# Copies a Gaussian .com file, changing the checkpoint file spec %chk= to the equivalent of the name of the new file. (Perl version.)
+##
+
 use strict;
 use warnings;
 

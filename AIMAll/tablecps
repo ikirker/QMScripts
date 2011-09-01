@@ -1,11 +1,13 @@
 #!/usr/bin/python
+# Pulls the critical point information out of an AIMAll .sum file.
+##
 
 import re
 import sys
 from optparse import OptionParser
 import math
 # I have a dream, that one day man may be known not by the
-#  colour of his skin, but by his ability to have a bloody
+#  station he was born to, but by his ability to have a bloody
 #  up to date version of Python. For now, the namedtuple
 #  function is included below instead of being imported from
 #  the collections module.

@@ -1,4 +1,7 @@
 #!/usr/bin/python
+# Pulls cartesian XYZ format geometries out of ADF output.
+##
+
 
 import re
 import sys

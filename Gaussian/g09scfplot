@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# A simple script for getting the changes in energy over an SCF from a Gaussian log file and plotting them in gnuplot. 
+##
 # A little too simple - doesn't handle Optimisations well, for example.
 
 TempDir=/tmp/g09scfplot-$$
@@ -7,7 +9,7 @@ mkdir $TempDir
 grep 'Delta-E' $1 | sed -e 's/[ ]\+/ /g' | cut -d ' ' -f5 >$TempDir/$TempFile
 PlotInstructions=" set term x11;
 set logscale y 10;
-plot \"$TempDir/$TempFile\" using (abs(\$1)) with linespoints
+plot \"$TempDir/$TempFile\" using (abs(\$1)) with linespoints title \"Delta-E\"
 "
 
 echo $PlotInstructions | gnuplot -persist

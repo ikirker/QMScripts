@@ -1,0 +1,5 @@
+g09pullgeom     	# Gets the last geometry from a Gaussian output file and prints it to the screen in cleaned format. (Could probably do with updating like the ADF one.)
+qg09     	#
+cpg.sh     	# Copies a Gaussian .com file, changing the checkpoint file spec %chk= to the equivalent of the name of the new file.
+cpg     	# Copies a Gaussian .com file, changing the checkpoint file spec %chk= to the equivalent of the name of the new file. (Perl version.)
+g09scfplot     	# A simple script for getting the changes in energy over an SCF from a Gaussian log file and plotting them in gnuplot. 

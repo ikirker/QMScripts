@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
+# Creates a .tar.gz archive of a Turbomole calculation's key files. (The ones copied with the Turbomole script cpc.)
+##
 
 OLDDIR=`pwd`
 
 #Get command line arguments
-while getopts  "hd:n:s:" flag
+while getopts  "hd:" flag
 do
     case "$flag" in
         "d")
@@ -11,14 +13,8 @@ do
 			  cd $OPTARG
 			fi
 			;;
-		"n")
-			ROTATIONAL_NUMBER=$OPTARG
-            ;;
-		"s")
-			SCALE_FACTOR=$OPTARG
-            ;;
 		"h")
-			echo "Usage: $0 [-d directory] [-n symmetry_number] [-s scale_factor]"
+			echo "Usage: $0 [-d directory] "
 			exit
 			;;
         *)

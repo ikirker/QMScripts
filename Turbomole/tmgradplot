@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-
 # Takes gradnorms from a Turbomole calculation and plots them with GNUplot
+##
 # -Ian Kirker (uccaiki)
 
 if [[ ! -f "gradient" ]]; then

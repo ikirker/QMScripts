@@ -1,4 +1,6 @@
 #!/usr/bin/env bash 
+# Views the last geometry of a Turbomole calculation in jmol.
+##
 
 tmpfile=/tmp/finalmol-$$.xyz
 t2x -c >> $tmpfile && \

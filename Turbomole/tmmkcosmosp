@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Creates a COSMO single point calculation from an existing Turbomole calculation.
+##
 
 #Check we have the binaries we need
 which cosmoprep > /dev/null

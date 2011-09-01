@@ -1,0 +1,11 @@
+tmopenshift     	# Very simply changes the orbital shift and damping parameters of a Turbomole control file to better ones for open shell calculations.
+tmfqc     	
+qturb     	#
+tmgradplot     	# Takes gradnorms from a Turbomole calculation and plots them with GNUplot
+finalmol     	# Views the last geometry of a Turbomole calculation in jmol.
+allmol     	# Views all geometries of a Turbomole calculation in jmol.
+tmarchive     	# Creates a .tar.gz archive of a Turbomole calculation's key files. (The ones copied with the Turbomole script cpc.)
+finalcom     	# Views the last geometry of a Turbomole calculation in Gaussview.
+x2t2     	# @(#) x2t2 converts XYZ to TURBOMOLE format
+tmautofreeh     	# Gets the free energy information out of Turbomole without user input to STDIN. 
+tmmkcosmosp     	# Creates a COSMO single point calculation from an existing Turbomole calculation.

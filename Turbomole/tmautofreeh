@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Gets the free energy information out of Turbomole without user input to STDIN. 
+##
 
 SCALE_FACTOR=1.00
 

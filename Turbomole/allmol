@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Views all geometries of a Turbomole calculation in jmol.
+##
 
 t2x > /tmp/allmol-$$ && jmol /tmp/allmol-$$ && rm /tmp/allmol-$$
 

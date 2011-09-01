@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Very simply changes the orbital shift and damping parameters of a Turbomole control file to better ones for open shell calculations.
+##
 
 echo Before:
 grep -e '$scforbitalshift' -e '$scfdamp' control

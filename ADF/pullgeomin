@@ -1,8 +1,9 @@
 #!/usr/bin/perl
+# Gets the last geometry from an ADF INput file and prints it to the screen in XYZ format.
+##
 
 #use warnings;
 
-# Gets the last geometry from an ADF INput file and prints it to the screen in cleaned format.
 $step_to_take = 0;
 if ("$ARGV[0]" eq "-n")
 {

@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# Gets information from one of my .md files on temperatures, energies, and the Pu-O distances. Probably not useful to anyone else except as an example.
+##
+
 
 import sys
 import numpy
@@ -531,13 +534,16 @@ Atoms are sorted.
   return trajectory
 
 if __name__=="__main__":
-  # Set up test trajectory
+  sys.stderr.write("Creating trajectory object...\n")
   trajectory = create_trajectory_from_md_file(sys.argv[1])
+  sys.stderr.write("Getting distance data...\n")
   distance_data = get_all_distances_from_to(trajectory, "Pu", "O")
+  sys.stderr.write("Making graph data files...\n")
   graph_distances(distance_data)
   graph_energies(trajectory)
   graph_temperatures(trajectory)
   #calculate_rdf(trajectory, "Pu", "O")
+  sys.stderr.write("Done.\n")
   
   
   

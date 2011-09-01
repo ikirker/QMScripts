@@ -1,4 +1,6 @@
 #!/usr/bin/perl
+# Gets the last geometry from a Gaussian output file and prints it to the screen in cleaned format. (Could probably do with updating like the ADF one.)
+##
 
 sub atomSymbol{
 	my ($z) = @_;
@@ -13,7 +15,6 @@ sub atomSymbol{
 
 #use warnings;
 
-# Gets the last geometry from an ADF output file and prints it to the screen in cleaned format.
 $step_to_take = 0;
 if ("$ARGV[0]" eq "-n")
 {

@@ -1,0 +1,1 @@
+orbitalcontributions     	# Gets Mulliken orbital % contributions and energy information from both ADF and Gaussian .log files, and can also make SVG graphs of energy levels.

@@ -1,4 +1,7 @@
 #!/bin/bash
+# Simply makes a t41 density file from a t21 file without having to mess about with densf input files.
+##
+
 in=$1
 out=${1%21}41
 

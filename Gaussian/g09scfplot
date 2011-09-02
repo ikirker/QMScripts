@@ -6,7 +6,19 @@
 TempDir=/tmp/g09scfplot-$$
 TempFile=g09scfdata-$$
 mkdir $TempDir
-grep 'Delta-E' $1 | sed -e 's/[ ]\+/ /g' | cut -d ' ' -f5 >$TempDir/$TempFile
+
+# Normal SCF example:
+: "
+ E= -30597.5567313298     Delta-E=       -0.090354048400 Rises=F Damp=F
+"
+
+# QC example:
+: "
+ Iteration  55 EE= -30636.7408437426     Delta-E=       -0.022773469616 Grad=1.694D-01
+"
+grep 'Delta-E' suan-pbe0sp-pupbegeom.log | sed -ne 's/^.*Delta-E=[ ]\+\([-]\?[0-9.]\+\) .*/\1/p' >$TempDir/$TempFile
+
+# We use the abs(energy change) so that we can do log plots.
 PlotInstructions=" set term x11;
 set logscale y 10;
 plot \"$TempDir/$TempFile\" using (abs(\$1)) with linespoints title \"Delta-E\"

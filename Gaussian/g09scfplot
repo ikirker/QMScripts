@@ -16,7 +16,7 @@ mkdir $TempDir
 : "
  Iteration  55 EE= -30636.7408437426     Delta-E=       -0.022773469616 Grad=1.694D-01
 "
-grep 'Delta-E' suan-pbe0sp-pupbegeom.log | sed -ne 's/^.*Delta-E=[ ]\+\([-]\?[0-9.]\+\) .*/\1/p' >$TempDir/$TempFile
+grep 'Delta-E' $1 | sed -ne 's/^.*Delta-E=[ ]\+\([-]\?[0-9.]\+\) .*/\1/p' >$TempDir/$TempFile
 
 # We use the abs(energy change) so that we can do log plots.
 PlotInstructions=" set term x11;

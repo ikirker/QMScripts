@@ -264,9 +264,9 @@ def get_all_distances_from_to(trajectory, a_element, b_element=None):
                      
   return distances
   
-def graph_distances(distance_data):
+def graph_distances(distance_data,filelabel):
   sys.stderr.write("Writing data to distance.data.\n")
-  t = open("distance.data"+pds(), "w")
+  t = open("distance"+filelabel+".data"+pds(), "w")
   
   number_of_data = len(distance_data[0].distances)
   fstring = "%f " * (number_of_data)
@@ -280,12 +280,12 @@ def graph_distances(distance_data):
   t.close()
   
   sys.stderr.write("Writing gnuplot input.\n")
-  t = open("t.gnuplot"+pds(), "w")
+  t = open(filelabel+".gnuplot"+pds(), "w")
   t.write("set key off; plot ")
   
   for i in range(2,len(distance_data[0].distances)):
-    t.write("\"distance.data"+pds()+"\" using 1:%d with lines, " % i)
-  t.write("\"distance.data"+pds()+"\" using 1:%d with lines " % (number_of_data+1))
+    t.write("\"distance"+filelabel+".data"+pds()+"\" using 1:%d with lines, " % i)
+  t.write("\"distance"+filelabel+".data"+pds()+"\" using 1:%d with lines " % (number_of_data+1))
   t.close()
   
 
@@ -538,8 +538,10 @@ if __name__=="__main__":
   trajectory = create_trajectory_from_md_file(sys.argv[1])
   sys.stderr.write("Getting distance data...\n")
   distance_data = get_all_distances_from_to(trajectory, "Pu", "O")
+  distance_dataH = get_all_distances_from_to(trajectory, "Pu", "H")
   sys.stderr.write("Making graph data files...\n")
-  graph_distances(distance_data)
+  graph_distances(distance_data,"PuO")
+  graph_distances(distance_dataH,"PuH")
   graph_energies(trajectory)
   graph_temperatures(trajectory)
   #calculate_rdf(trajectory, "Pu", "O")

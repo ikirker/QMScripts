@@ -118,7 +118,7 @@ def huetorgb(m1, m2, h):
 
 def getOccupancyPercentageColour(occupancy, percentage):
   # I'm not too sure about those colour settings. Pending tests.
-  occupied = [ [0.7,  '#E100FF'],  #Magenta
+  occupied = [ [0.7,  '#9999FF'],  #Pale but pure blue
                [0.5,  '#8640FF'],  #Lilac-blue
                [0.35, '#40A9FF'], #Pale blue
                [0.25, '#0BC9D6'],  #Cyan
@@ -127,7 +127,7 @@ def getOccupancyPercentageColour(occupancy, percentage):
                [0.0,  '#666666' ]] # Black
   unoccupied = [[ 0.5, '#C5E800' ], #A pretty vile slightly green-ish yellow
                 [ 0.25,'#FFDD00' ], #A fair yellow
-                [ 0.1, '#FF8000' ], #Peach
+                [ 0.1, '#FF8000' ], #slightly Peachy red
                 [ 0.0, '#FF0000' ]] #As red as red can be
   if occupancy >= 0.5:
     table = occupied
@@ -336,6 +336,8 @@ def parseOptions():
           help="only consider occupied orbitals")
   parser.add_option("-t", "--tsv",   action="store_true", dest="tsv", default=False,
           help="only print energies as tsv")
+  parser.add_option("--cols",   action="store_true", dest="cols", default=False,
+          help="output in columns")
   parser.add_option("-m", "--nocomps", action="store_true", dest="skip_components", default=False,
           help="don't print detailed components")
   parser.add_option("-l", action="store", type="float", dest="min_energy", default=None, help="Lower energy bound")
@@ -544,7 +546,7 @@ def main():
   listOfMOlists = list()
 
   for inputFilename in args:
-    print("File: %s" %(inputFilename))  
+    sys.stderr.write("File: %s\n" %(inputFilename))  
     inputFileType = getFileType(inputFilename)
     inputFile = open(inputFilename, "r")
     lines = inputFile.readlines()
@@ -554,7 +556,7 @@ def main():
     if inputFileType == 'g09':
       MOlist = readG09orbitalContributions(lines)
     
-    print("  Read in "+str(len(MOlist))+" MOs.")
+    sys.stderr.write("  Read in "+str(len(MOlist))+" MOs.\n")
     MOlist = filterMOlist(MOlist, options)
     
     if options.remove_degeneracy:
@@ -566,7 +568,7 @@ def main():
         lastEnergy = MO.energy
       MOlist = MOlist2    
     
-    print("  Filtered to " + str(len(MOlist)) + " MOs.")
+    sys.stderr.write("  Filtered to " + str(len(MOlist)) + " MOs.\n")
 
     #Sort the list of MOs by energy
     MOlist.sort(key=lambda MO: float(MO.energy))
@@ -575,15 +577,42 @@ def main():
 
     inputFile.close() 
 
+  outputSets = list()
   for MOlist in listOfMOlists:
+    outputSet = list()
     for MO in MOlist:
       spinLabel = "+" if (int(MO.spin) == 1) else "-" if (int(MO.spin) == 2) else "+-"
-      sys.stdout.write("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
-      sys.stdout.write("%s \n" % (componentString(MO.components,options))) 
+      oneLine = ("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
+      oneLine += ("%s " % (componentString(MO.components,options))) 
+      outputSet.append(oneLine)
+    outputSets.append(outputSet)
     if options.tsv:
       sys.stdout.write("--TSV--\n")
       printTSVenergies(MOlist)
-  
+
+  # Produce columnar output if required, else series of rows
+  if options.cols:
+    # All this is basically just space-filling and a transposition of an array
+    numCols = len(outputSets)
+    numRows = 0
+    for outputSet in outputSets:
+      if len(outputSet) > numRows:
+        numRows = len(outputSet)
+    sys.stderr.write("Preparing %d cols x %d rows.\n" % (numCols,numRows))
+    outputSegments = [['' for dummy in range(numCols)] for otherDummy in range(numRows)] 
+    for i in range(numRows):
+      for j in range(numCols):
+        if len(outputSets[j])<=i:
+          outputSegments[i][j] = " "
+        else:
+          outputSegments[i][j] = outputSets[j][i]
+    for outputLine in outputSegments:
+      sys.stdout.write("%s\n" % (' \t'.join(outputLine)))
+  else:
+    for outputSet in outputSets:
+      for outputLine in outputSet:
+        sys.stdout.write("%s \n" % (outputLine))
+
   
   if options.svgFilename:  
     makeSVGscale(listOfMOlists, options, False)

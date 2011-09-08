@@ -313,6 +313,15 @@ def graph_temperatures(trajectory):
     step=step+1
   t.close()  
 
+def make_xyz_output(trajectory):
+  xyzFile = open("trajectory"+pds()+".xyz", "w")
+  for timestep in trajectory.timesteps:
+    xyzFile.write("%d\n\n" % (len(trajectory.atoms)))
+    for k,v in trajectory.atoms:
+      xyzFile.write("%s %-10.5 %-10.5 %-10.5\n" % (k, v.positions[timestep][0], v.positions[timestep][1], v.positions[timestep[2]]))
+  xyzFile.close()
+
+
 def calculate_rdf(trajectory, from_element, to_element=None):
   # This routine doesn't seem to work correctly
   """Returns a list containing points on the RDF for
@@ -544,6 +553,8 @@ if __name__=="__main__":
   graph_distances(distance_dataH,"PuH")
   graph_energies(trajectory)
   graph_temperatures(trajectory)
+  sys.stderr.write("Making xyz output...\n")
+  make_xyz_output(trajectory)
   #calculate_rdf(trajectory, "Pu", "O")
   sys.stderr.write("Done.\n")
   

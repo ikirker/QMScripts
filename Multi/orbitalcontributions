@@ -146,7 +146,12 @@ def getOccupancyPercentageColour(occupancy, percentage):
 def getMOcolour( MO, options ):
   if options.colour_by == "occ" or options.colour_by == None:
     occ = float(MO.occupancy)
-    return "green" if occ > 1.8 else "red" if occ < 0.3 else ("#%06x" % (int(0x0000FF + occ*0x008800)))
+    if occ > 1.8:
+      return "green"
+    elif occ < 0.3:
+      return "red"
+    else:
+      return ("#%06x" % (int(0x0000FF + occ*0x008800)))
   # Tricky to account for all cases
   #if options.colour_by == "sym":
   #  return { 'A': 'blue',

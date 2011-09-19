@@ -1,0 +1,45 @@
+#!/usr/bin/env perl
+# Puts all the turbomole input blocks into one monolithic file.
+##
+
+use warnings;
+
+open (CONTROL, "<control");
+our (%tmkeys);
+our (%files);
+our ($file);
+
+while (<CONTROL>) {
+  if ($_ =~ /\$([A-Za-z_-]+)/) {
+    $tmkeys{$1}=`sdg $1`;
+    $file=`sdg -f $1`;
+    if ("$file" ne "") {
+      chomp($file);
+      print(STDERR "File: $file\n");
+      $files{$file} = 1;
+    }
+  }
+}
+
+foreach (keys (%files)) {
+  if ($_ ne "control") {
+    print(STDERR "Opening $_...\n");
+    open (OTHER, "<$_");
+    while(<OTHER>) {
+      if ($_ =~ /\$([A-Za-z_-]+)/) {
+        $tmkeys{$1}=`sdg $1`;
+      }
+    }
+    close (OTHER);
+  }
+}
+
+foreach $key (sort keys (%tmkeys)) {
+  if ($key ne "end") {
+    print "${tmkeys{$key}}";
+  }
+}
+print "\$end\n";
+
+      
+

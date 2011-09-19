@@ -8,4 +8,5 @@ tmarchive     	# Creates a .tar.gz archive of a Turbomole calculation's key file
 finalcom     	# Views the last geometry of a Turbomole calculation in Gaussview.
 x2t2     	# @(#) x2t2 converts XYZ to TURBOMOLE format
 tmautofreeh     	# Gets the free energy information out of Turbomole without user input to STDIN. 
+tmconc            # Reduces Turbomole input files down to a single file.
 tmmkcosmosp     	# Creates a COSMO single point calculation from an existing Turbomole calculation.

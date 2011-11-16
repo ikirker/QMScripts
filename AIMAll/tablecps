@@ -157,7 +157,7 @@ class colours:
     self.CYAN    = ''
     self.RESET   = ''
 
-CPMaker = namedtuple('CP', ' number x y z signature type atoms rho delSqRho ellip V G K L delSqV delSqVen delSqVrep delSqG delSqK')
+CPMaker = namedtuple('CP', ' number x y z signature type atoms rho delSqRho hesdiag ellip V G K L delSqV delSqVen delSqVrep delSqG delSqK')
 
 # I freely admit this may be a little silly. Efficient, though.
 ElementListMaker = namedtuple('ElementList', 'H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn')
@@ -287,7 +287,7 @@ def printBondLengthsVSBCPdata(CPs, coords):
 
 def printEnergyDensityRatios(CPs):
   CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
-  sys.stdout.write("Atoms\tBond Length(A)\tRho\tDelSqRho\tEllip\tK\tV\tG\tV/G\n")
+  sys.stdout.write("Atoms\tType\tRho\tDelSqRho\tEllip\tK\tV\tG\tV/G\n")
   for CP in CPs:
     sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" %
                      (
@@ -296,6 +296,23 @@ def printEnergyDensityRatios(CPs):
                      ) 
                     )
   return
+
+def printDiamonds(CPs):
+  CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
+  # See 2010, Tognetti et al., J. Chem. Phys, "Making DFT and QTAIM converse [...]"
+  diamond = lambda x: ((float(x[0])*float(x[0])) + 
+                       (float(x[1])*float(x[1])) + 
+                       (float(x[2])*float(x[2])) ) 
+  sys.stdout.write("Type\tAtoms\tDiamond\n")
+  for CP in CPs:
+    sys.stdout.write("%s\t%s\t%s\n" % (
+                       CP.type,
+                       ' '.join(sorted(CP.atoms.split())),
+                       diamond(CP.hesdiag)
+                       )
+                    )
+  return
+
 
 def readCPs(file):
   file.seek(0) # Make sure it's reset to the beginning
@@ -306,6 +323,7 @@ def readCPs(file):
   reEllip = re.compile("[ \t]+Bond Ellipticity = ([ -]{0,1}\d.\d+E[+-]\d\d|NA)")
   reRho     = re.compile("[ \t]+Rho = ([ -]{0,1}\d.\d+E[+-]\d\d)")
   reDelSqRho  = re.compile("[ \t]+DelSqRho = ([ -]{0,1}\d.\d+E[+-]\d\d)")
+  reHesTrace  = re.compile("[ \t]+HessRho_EigVals = ([ -]{0,1}\d.\d+E[+-]\d+) ([ -]{0,1}\d.\d+E[+-]\d+) ([ -]{0,1}\d.\d+E[+-]\d+)")
   reV         = re.compile("[ \t]+V = ([ -]{0,1}\d.\d+E[+-]\d\d)")
   reG         = re.compile("[ \t]+G = ([ -]{0,1}\d.\d+E[+-]\d\d)")
   reK         = re.compile("[ \t]+K = ([ -]{0,1}\d.\d+E[+-]\d\d)")
@@ -350,6 +368,11 @@ def readCPs(file):
     maLine = reDelSqRho.match(line)
     if maLine != None:
       oneCP['delSqRho'] = maLine.group(1)
+      continue
+
+    maLine = reHesTrace.match(line)
+    if maLine != None:
+      oneCP['hesdiag'] = [maLine.group(1), maLine.group(2), maLine.group(3)]
       continue
 
     maLine = reEllip.match(line)
@@ -438,6 +461,8 @@ def tabulateOneFile(filename, options):
     printEnergyDensityRatios(CPs)
   elif options.coords:
     printCPcoords(CPs)
+  elif options.diamond:
+    printDiamonds(CPs)
   else:
     tabulateCPs(CPs)
 
@@ -454,6 +479,7 @@ def parseOptions():
   parser.add_option("--energydensities", action="store_true", default=False, dest="energydensities", help="print energy density ratios")
   parser.add_option("--coords", action="store_true", default=False, dest="coords", help="print CP coords only in TSV format")
   parser.add_option("-t", action="store", default=False, dest="cp_type", metavar="cp_type", help="specify type of CP - b/r/c/na")
+  parser.add_option("--diamond", action="store_true", default=False, dest="diamond", help="print diamond value") # See function for def
 
   (options, args) = parser.parse_args()
   return (options,args)

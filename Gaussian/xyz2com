@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Just creates quick GaussView-able .com format input from an xyz on stdin or specified by filename.
+##
+
+# If no file is specified, use stdin, otherwise, open a file descriptor for the file.
+if [[ "$1" == "" || "$1" == "--" ]]; then
+  InputFD=0
+else
+  exec 4<>$1
+  InputFD=4
+fi
+
+# Skip the first xyz line, the number of atoms.
+read -r -u $InputFD
+
+# Get description if any.
+read -r -u $InputFD Description
+
+if [[ "$Description" == "" ]]; then
+  Description = "No Description"
+fi
+
+echo "# "
+echo
+echo "$Description"
+echo
+echo "0 1"
+
+# Read lines from input, copy them out.
+while read -r -u $InputFD AtomLine; do
+  echo "$AtomLine"
+done
+
+# Add a blank line at the end. Gaussian loves blank lines.
+echo
+
+# Close the file descriptor
+if [[ "$InputFD"=="4" ]]; then
+ exec 4>&-
+fi
+

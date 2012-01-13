@@ -157,7 +157,7 @@ if [[ "$SkipInitialGenStep" != "y" ]]; then
   InitialJobID=$RETURN
 fi
 
-# Some path manipulation #TODO
+cd ${Wfxfilestub}_atomicfiles
 AtomIntIDs=""
 for atom in Atoms; do
   JobCommand="$AIMINT $atom.inp $Wfxfile"
@@ -166,6 +166,7 @@ for atom in Atoms; do
   GetJobID $ThisJobID
   AtomIntIDs="$AtomIntIDs,$RETURN"
 done
+cd -
 
 if [[ "$SkipFinalSum" != "y" ]]; then
   JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"

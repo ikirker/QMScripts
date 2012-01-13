@@ -315,10 +315,16 @@ def graph_temperatures(trajectory):
 
 def make_xyz_output(trajectory):
   xyzFile = open("trajectory"+pds()+".xyz", "w")
+  stepcount = 0
   for timestep in trajectory.timesteps:
-    xyzFile.write("%d\n\n" % (len(trajectory.atoms)))
-    for k,v in trajectory.atoms:
-      xyzFile.write("%s %-10.5 %-10.5 %-10.5\n" % (k, v.positions[timestep][0], v.positions[timestep][1], v.positions[timestep[2]]))
+    xyzFile.write("%d\n Time=%f fs\n" % (len(trajectory.atoms),aut_to_fs(timestep)))
+    for (atomLabel,atom) in trajectory.atoms.items():
+      xyzFile.write("%s % 10.5f % 10.5f % 10.5f\n" % 
+          (atom.element, 
+            bohr_to_angstrom(atom.positions[stepcount][0]), 
+            bohr_to_angstrom(atom.positions[stepcount][1]), 
+            bohr_to_angstrom(atom.positions[stepcount][2]) ))
+    stepcount += 1
   xyzFile.close()
 
 

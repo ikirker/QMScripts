@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Runs a complete AIM job in the queue, including an initial single-core job to get the CPs and atomic input files, parallel integrations, then a final sumup.
+##
+
+AIMQB=$HOME/AIMAll/aimqb.ish
+AIMINT=$HOME/AIMAll/aimint.ish
+
+Help="
+$0 - broken down tasks with AIMAll in the queue.
+ Opts:
+    -a <atoms>    Only do these atoms (comma separated list)
+    -f '<flags>'  Flags to use for the aimqb runs. (Already included: -skipint=true -nogui)
+    -n <procs>    Number of processors.
+    -p            Use ssh - you must set a HostList variable for this to work.
+    -i            Don't do the initial aimqb run to generate the integration files.
+    -s            Don't do a final aimqb run to update the sum files.
+    -h            Print this help message.
+"
+
+#Get command line arguments
+while getopts  "ia:f:n:psh" flag
+do
+  case "$flag" in
+    "a")
+      OnlyAtoms=$OPTARG
+      ;;
+    "f")
+      OtherFlags=$OPTARG
+      ;;
+    "n")
+      NumProcs=$OPTARG
+      ;;
+    "i")
+      SkipInitialGenStep="y"
+      ;;
+    "s")
+      SkipFinalSum="y"
+      ;;
+    "p")
+      ParallelMechanism="ssh"
+      ;;
+    "h")
+      echo -e "$Help"
+      exit
+      ;;
+    *)
+      echo "Invalid argument provided."
+      exit 5
+      ;;
+  esac
+done
+
+#Get the filename as the last argument
+let filenameIndex=$OPTIND-1
+shift $filenameIndex
+
+Inputfile="$1"
+
+case "$Inputfile" in
+  *.fchk)
+    # If we have an fchk file, generate a wfx file from it and 
+    #  then proceed as if we had a wfx file.
+    $AIMQB -f2wonly=true -nogui $Inputfile
+    Wfxfile="${Inputfile%.fchk}.wfx"
+  ;;
+  *.wfx)
+    Wfxfile="$Inputfile"
+  ;;
+  *.wfn)
+    echo "Sorry, this does not yet support .wfn files."
+    exit
+  ;;
+  *)
+    echo "Please provide an input file (either a fchk or wfx), or use $0 -h for the options." >&2
+    exit
+  ;;
+esac
+
+Wfxfilestub=${Wfxfile%\.wfx}
+
+# We need to:
+#  1. Get the atomlist from the wfx file.
+#  2. Format these to predict what the atomic files will be.
+#  3. Make the submission scripts.
+#  4. Submit them.
+
+# Atom list tag in .wfx file.
+:"
+<Nuclear Names>
+"
+:"
+</Nuclear Names>
+"
+
+# Sed doesn't allow inline comments O_o
+: " #n #Turns off automatic printing.
+s/<Nuclear Names>//           #Finds and removes the names tag so that
+t AddToBuffer                 # this line <- will skip to the AddToBuffer loop
+d                             #(if no names tag, clear the pattern space and cycle again)
+
+:AddToBuffer                  #Label
+N                             # Add the next line of input to the pattern buffer
+s_\(.*\)</Nuclear Names>_\1_  # Find and remove the closing names tag
+t Quit                        # Then if we found the closing tag above, skip to the print&quit
+T AddToBuffer                 # Otherwise loop around again
+
+:Quit                         #Label
+y_ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz_ # Lower case all the atom labels
+p                             # Print the pattern buffer
+q                             # Quit
+"
+
+if #!Atom list given #TODO
+Atoms=`cat $Wfxfile | sed "#n 
+s/<Nuclear Names>//           
+t AddToBuffer                 
+d                             
+
+:AddToBuffer                  
+N                             
+s_\(.*\)</Nuclear Names>_\1_  
+t Quit                       
+T AddToBuffer                
+
+:Quit                        
+y_ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz_
+p                            
+q                            
+"`
+else
+  Atoms=AtomsGiven #TODO
+fi
+
+JobHeader="#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -l h_rt=47:0:0
+#$ -l mem=4G
+#$ -N \$JobName
+#$ -P $PROJECT_ID
+#$ -cwd
+"
+
+DependencyLine="
+#$ -hold_jid=\$Dependencies
+
+"
+
+GetJobID () {
+  RETURN=${1%% (*}
+  RETURN=${RETURN##Your job }
+}
+
+if [[ "$SkipInitialGenStep" != "y" ]]; then
+  JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"
+  InitialJobID=$(echo "$JobScript $JobCommand" | qsub) # Then pick up the job id from that I forget how #TODO
+  GetJobID $InitialJobID
+  InitialJobID=$RETURN
+fi
+
+# Some path manipulation #TODO
+AtomIntIDs=""
+for atom in Atoms; do
+  JobCommand="$AIMINT $atom.inp $Wfxfile"
+  Dependencies=$InitialJobID
+  ThisJobID=$(echo -e "$JobScript\n#\$ -hold_jid=$Dependencies\n$JobCommand" | qsub)
+  GetJobID $ThisJobID
+  AtomIntIDs="$AtomIntIDs,$RETURN"
+done
+
+if [[ "$SkipFinalSum" != "y" ]]; then
+  JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"
+  Dependencies="$AtomIntIDs"
+  echo -e "$JobScript\n#\$ -hold_jid=$Dependencies\n$JobCommand" | qsub
+fi
+
+#Done

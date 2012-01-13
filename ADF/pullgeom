@@ -86,7 +86,7 @@ def main():
   filename = args[0]
   geometries = readGeomFromFile(filename,opts)
 
-  sys.stderr.write("%d geometries read from file.\n" % (len(geometries)))
+  sys.stderr.write("%d geometries found in file.\n" % (len(geometries)))
 
   if len(geometries) != 0:
     if opts.getEveryStep == True:

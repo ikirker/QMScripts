@@ -22,7 +22,7 @@ while getopts  "ia:f:n:psh" flag
 do
   case "$flag" in
     "a")
-      OnlyAtoms=$OPTARG
+      AtomsGiven=$OPTARG
       ;;
     "f")
       OtherFlags=$OPTARG
@@ -85,10 +85,10 @@ Wfxfilestub=${Wfxfile%\.wfx}
 #  4. Submit them.
 
 # Atom list tag in .wfx file.
-:"
+: "
 <Nuclear Names>
 "
-:"
+: "
 </Nuclear Names>
 "
 
@@ -110,7 +110,7 @@ p                             # Print the pattern buffer
 q                             # Quit
 "
 
-if #!Atom list given #TODO
+if [[ "$AtomsGiven" == "" ]]; then
 Atoms=`cat $Wfxfile | sed "#n 
 s/<Nuclear Names>//           
 t AddToBuffer                 
@@ -128,16 +128,19 @@ p
 q                            
 "`
 else
-  Atoms=AtomsGiven #TODO
+  Atoms=$AtomsGiven
 fi
 
 JobHeader="#!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -l h_rt=47:0:0
 #$ -l mem=4G
-#$ -N \$JobName
 #$ -P $PROJECT_ID
 #$ -cwd
+"
+
+NonIntLine="
+ln -s $Wfxfilestub.ctl /tmp/$Wfxfilestub.ctl
 "
 
 DependencyLine="
@@ -146,32 +149,46 @@ DependencyLine="
 "
 
 GetJobID () {
-  RETURN=${1%% (*}
-  RETURN=${RETURN##Your job }
+  RETURN=${1##Your job }
+  RETURN=${RETURN%% (*}
+  RETURN=${RETURN// }
 }
+
+# For testing: outputs the jobs instead of submitting them. Breaks the job id things though.
+#qsub() {
+#  cat -n >&2
+#}
 
 if [[ "$SkipInitialGenStep" != "y" ]]; then
   JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"
-  InitialJobID=$(echo "$JobScript $JobCommand" | qsub) # Then pick up the job id from that I forget how #TODO
-  GetJobID $InitialJobID
+  InitialJobID=$(echo -e "$JobHeader\n#\$ -N $Wfxfilestub-Header\n$NonIntLine\n$JobCommand\n" | qsub)
+  GetJobID "$InitialJobID"
   InitialJobID=$RETURN
+  echo "Initial job run, ID: $InitialJobID"
 fi
 
-cd ${Wfxfilestub}_atomicfiles
+CDLine="cd ${Wfxfilestub}_atomicfiles"
 AtomIntIDs=""
-for atom in Atoms; do
-  JobCommand="$AIMINT $atom.inp $Wfxfile"
-  Dependencies=$InitialJobID
-  ThisJobID=$(echo -e "$JobScript\n#\$ -hold_jid=$Dependencies\n$JobCommand" | qsub)
-  GetJobID $ThisJobID
+for atom in $Atoms; do
+  JobCommand="$AIMINT $atom.inp ../$Wfxfile"
+  if [[ "$InitialJobID" != "" ]]; then
+    DependencyLine="#\$ -hold_jid $InitialJobID"
+  else
+    DependencyLine=""
+  fi
+  ThisJobID=$(echo -e "$JobHeader\n#\$ -N $Wfxfilestub-Int$atom\n$DependencyLine\n$CDLine\n$JobCommand\n" | qsub)
+  GetJobID "$ThisJobID"
   AtomIntIDs="$AtomIntIDs,$RETURN"
 done
-cd -
 
 if [[ "$SkipFinalSum" != "y" ]]; then
   JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"
   Dependencies="$AtomIntIDs"
-  echo -e "$JobScript\n#\$ -hold_jid=$Dependencies\n$JobCommand" | qsub
+  if [[ "$AtomIntIDs" == "" ]]; then
+    # If there aren't any job ids from the main bit, something is wrong
+    echo "No job ids found from integration jobs, exiting..." >&2
+  fi
+  echo -e "$JobHeader\n#\$ -hold_jid $Dependencies\n#\$ -N $Wfxfilestub-Final\n$NonIntLine\n$JobCommand\n" | qsub
 fi
 
 #Done

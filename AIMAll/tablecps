@@ -313,6 +313,24 @@ def printDiamonds(CPs):
                     )
   return
 
+def hamfistedMeans(CPs):
+  count = 0
+  meanRho=0
+  meanLaplacian=0
+  meanK=0
+  for CP in CPs:
+    meanRho += float(CP.rho)
+    meanLaplacian += float(CP.delSqRho)
+    meanK += float(CP.K)
+    count += 1
+  meanRho /= count
+  meanLaplacian /= count
+  meanK /= count
+  sys.stdout.write(("Mean Rho: %-9f\n"+
+                   "Mean Laplacian: %-9f\n"+
+                   "Mean K: %-9f\n") % (meanRho, meanLaplacian, meanK))
+  return
+
 
 def readCPs(file):
   file.seek(0) # Make sure it's reset to the beginning
@@ -445,7 +463,8 @@ def tabulateOneFile(filename, options):
   if options.cp_type:
     CPs = filter(lambda x :(x.type)==(options.cp_type.upper()+"CP"), CPs)
   if options.atom:
-    CPs = filter(lambda x :options.atom in x.atoms, CPs) # This doesn't quite work properly yet - should add word boundaries.
+    #CPs = filter(lambda x :options.atom in x.atoms, CPs) # This doesn't quite work properly yet - should add word boundaries.
+    CPs = filter(lambda x : all([testatom in x.atoms for testatom in options.atom.split(',')]) , CPs )
 
   if options.ancp==True:
     quickXLtable(CPs)
@@ -466,6 +485,9 @@ def tabulateOneFile(filename, options):
   else:
     tabulateCPs(CPs)
 
+  if options.andmeans:
+    hamfistedMeans(CPs) # A little rough, hence the name - this should really be integrated, but I want these results now. :(
+
   return
 
 def parseOptions():
@@ -480,6 +502,7 @@ def parseOptions():
   parser.add_option("--coords", action="store_true", default=False, dest="coords", help="print CP coords only in TSV format")
   parser.add_option("-t", action="store", default=False, dest="cp_type", metavar="cp_type", help="specify type of CP - b/r/c/na")
   parser.add_option("--diamond", action="store_true", default=False, dest="diamond", help="print diamond value") # See function for def
+  parser.add_option("--andmeans", action="store_true", default=False, dest="andmeans", help="print means of values") # Oh god
 
   (options, args) = parser.parse_args()
   return (options,args)

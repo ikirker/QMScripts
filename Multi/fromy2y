@@ -1,0 +1,116 @@
+#!/usr/bin/env python
+
+from optparse import OptionParser
+import re
+import sys
+import math
+
+def readXYZ(lines):
+  """Reads any format that is like an XYZ file, really.
+     It's so nonspecific because (a) I wrote it in a hurry,
+                                 (b) as is, it reads .com files with 
+                                      cartesian coordinates, which is
+                                      handy.
+     When I say 'reads', I mean it takes a list containing all the 
+     lines of the file as input, or any type of iterable, really, and
+     turns it into a list of lists that are of the format:
+       (atom element label, xcoord, ycoord, zcoord, number in sequence)
+     ."""
+  molecule = list()
+  resplit = re.compile("^[ ]*"   +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)") # Ignores anything after the fourth non-space thing.
+  count=1
+  for line in lines:
+    match = resplit.match(line)
+    if match != None:
+      groups = list(match.groups())
+      groups.append(count)
+      molecule.append(groups)
+      count = count+1
+  
+  return molecule
+
+def parseArgs():
+  parser = OptionParser(description="Get the distance between sets of atoms from one or more XYZ files.")
+  parser.add_option("--files", dest="files", metavar="xyzfile", type="string", nargs=1, help="an XYZ file to read")
+  parser.add_option("--atoms", dest="atoms", metavar="atoms", type="string", nargs=1, help="the atoms to get the distances between")
+  parser.add_option("-i", dest="stdin", action="store_true", help="read from stdin")
+
+  # This looks kind of odd because I wrote it before I realised the system I was working on didn't have the argparse module, so I had to quickly rewrite it to use optparse instead.
+  (args,throwaway) = parser.parse_args()
+  return args
+
+def any(alist):
+  # I needed this, and it apparently doesn't exist in Python pre 2.7.
+  # Up to date versions would be nice. :/
+  for a in alist:
+    if a==True:
+      return True 
+  return False
+
+def printDist(A,B):
+  dX = float(A[1]) - float(B[1])
+  dY = float(A[2]) - float(B[2])
+  dZ = float(A[3]) - float(B[3])
+  dist = math.sqrt( dX*dX + dY*dY + dZ*dZ )
+
+  sys.stdout.write(" %s%d -> %s%d : %f\n" % (A[0], A[4], B[0], B[4], dist))
+  return
+
+def main():
+  args = parseArgs()
+
+  if args.files != None:
+    files = args.files.split(',')
+  else:
+    files = "No file, maybe we read from stdin."
+
+  for inputFilename in files:
+
+    if not args.stdin:
+      sys.stderr.write("File: %s\n" %(inputFilename))  
+      inputFile = open(inputFilename, "r")
+      lines = inputFile.readlines()
+    
+    else:
+      lines = sys.stdin.readlines()
+
+    molecule = readXYZ(lines)
+    if len(molecule) == 0:
+      sys.stderr.write("Error: molecule was not read correctly.\n")
+      sys.exit(5)
+    else:
+      sys.stderr.write("Molecule contains %d read atoms.\n" % (len(molecule)))
+
+    matchAtomList = args.atoms.split(',')
+
+    fromAtom = matchAtomList[0]
+    toAtom   = matchAtomList[1]
+
+    listOfElementsInMolecule = [ x[0] for x in molecule ]
+
+    if not (( fromAtom in listOfElementsInMolecule ) and 
+            ( toAtom   in listOfElementsInMolecule )):
+      sys.stderr.write("Error: One or both of the specified elements are not in the molecule.\n")
+      sys.exit(5)
+
+    fromList = filter(lambda x: fromAtom == x[0], molecule)
+    toList   = filter(lambda x: toAtom   == x[0], molecule)
+    
+    for fromAtom in fromList:
+      for toAtom in toList:
+        if (fromAtom[0] == toAtom[0]) and (fromAtom[4] > toAtom[4]):
+          continue                   # Prevents duplication.
+        if fromAtom[4] != toAtom[4]: # Make sure they're not the same atom
+          printDist(fromAtom, toAtom)
+
+    return
+
+if __name__=="__main__":
+  main()

@@ -4,6 +4,7 @@
 
 AIMQB=$HOME/AIMAll/aimqb.ish
 AIMINT=$HOME/AIMAll/aimint.ish
+System="legion" # Options: xenon or legion
 
 Help="
 $0 - broken down tasks with AIMAll in the queue.
@@ -132,7 +133,6 @@ else
 fi
 
 #########
-System="xenon"
 
 if [[ "$System" == "legion" ]]; then
 JobHeader="#!/usr/bin/env bash
@@ -142,14 +142,16 @@ JobHeader="#!/usr/bin/env bash
 #$ -P $PROJECT_ID
 #$ -cwd
 "
-fi
-if [[ "$System" == "xenon" ]]; then
+elif [[ "$System" == "xenon" ]]; then
 JobHeader="#!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -cwd
 "
+else
+echo "Incorrect system name set, exiting." >&2
+exit
 fi
-#########
+########e
 
 NonIntLine="
 ln -s $Wfxfilestub.ctl /tmp/$Wfxfilestub.ctl

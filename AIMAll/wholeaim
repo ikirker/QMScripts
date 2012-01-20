@@ -131,6 +131,10 @@ else
   Atoms=$AtomsGiven
 fi
 
+#########
+System="xenon"
+
+if [[ "$System" == "legion" ]]; then
 JobHeader="#!/usr/bin/env bash
 #$ -S /bin/bash
 #$ -l h_rt=47:0:0
@@ -138,6 +142,14 @@ JobHeader="#!/usr/bin/env bash
 #$ -P $PROJECT_ID
 #$ -cwd
 "
+fi
+if [[ "$System" == "xenon" ]]; then
+JobHeader="#!/usr/bin/env bash
+#$ -S /bin/bash
+#$ -cwd
+"
+fi
+#########
 
 NonIntLine="
 ln -s $Wfxfilestub.ctl /tmp/$Wfxfilestub.ctl

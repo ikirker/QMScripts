@@ -1,0 +1,131 @@
+#!/usr/bin/env python
+# Compares two XYZ-like geometries. Pretty primitive.
+##
+
+from optparse import OptionParser
+import re
+import sys
+import math
+import numpy
+
+def readXYZ(lines):
+  """Reads any format that is like an XYZ file, really.
+     It's so nonspecific because (a) I wrote it in a hurry,
+                                 (b) as is, it reads .com files with 
+                                      cartesian coordinates, which is
+                                      handy.
+     When I say 'reads', I mean it takes a list containing all the 
+     lines of the file as input, or any type of iterable, really, and
+     turns it into a list of lists that are of the format:
+       (atom element label, xcoord, ycoord, zcoord, number in sequence)
+     ."""
+  molecule = list()
+  resplit = re.compile("^[ ]*"   +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)" +
+                       "[ ]+"    +
+                       "([^ ]+)") # Ignores anything after the fourth non-space thing.
+  count=1
+  for line in lines:
+    match = resplit.match(line)
+    if match != None:
+      groups = list(match.groups())
+      #groups.append(count)
+      molecule.append([groups[0], 
+                       [float(groups[1]), 
+                        float(groups[2]), 
+                        float(groups[3])], 
+                       #groups[4]])
+                       ])
+      count = count+1
+  
+  return molecule
+
+
+def compareMolecules(A,B):
+  """We're going for simple in this version, so
+      just sort the two lists of atoms, then compare 
+      element for element.
+  """
+  sA = sorted(A)
+  sB = sorted(B)
+
+  sC = zip(sA,sB)
+
+  for pair in sC:
+    if ((getA2BDist(pair[0], pair[1]) > 0.0001) or
+       (pair[0][0] != pair[1][0])):
+      return False
+  return True
+
+def getA2BDist(atomA, atomB):
+  dX = atomA[1][0] - atomB[1][0]
+  dY = atomA[1][1] - atomB[1][1]
+  dZ = atomA[1][2] - atomB[1][2]
+
+  r = math.sqrt(dX*dX + dY*dY + dZ*dZ)
+  return r
+
+def parseArgs():
+  parser = OptionParser(description="Get the distance between sets of atoms from one or more XYZ files.")
+  parser.add_option("--files", dest="files", metavar="xyzfile", type="string", nargs=1, help="an XYZ file to read")
+  parser.add_option("-i", dest="stdin", action="store_true", help="read from stdin")
+
+  # This looks kind of odd because I wrote it before I realised the system I was working on didn't have the argparse module, so I had to quickly rewrite it to use optparse instead.
+  (args,throwaway) = parser.parse_args()
+  return args
+
+def any(alist):
+  # I needed this, and it apparently doesn't exist in Python pre 2.7.
+  # Up to date versions would be nice. :/
+  for a in alist:
+    if a==True:
+      return True 
+  return False
+
+def main():
+  args = parseArgs()
+
+  if args.files != None:
+    files = args.files.split(',')
+  else:
+    files = "No file, maybe we read from stdin."
+
+  if len(files) != 2:
+    sys.stderr.write("Error: you must provide two files.\n")
+    exit(5)
+
+  molecules = list()
+
+  for inputFilename in files:
+
+    if not args.stdin:
+      sys.stderr.write("File: %s\n" %(inputFilename))  
+      inputFile = open(inputFilename, "r")
+      lines = inputFile.readlines()
+    
+    else:
+      lines = sys.stdin.readlines()
+
+    molecule = readXYZ(lines)
+    molecules.append(molecule)
+    if len(molecule) == 0:
+      sys.stderr.write("Error: molecule was not read correctly.\n")
+      sys.exit(5)
+    else:
+      sys.stderr.write("Molecule contains %d read atoms.\n" % (len(molecule)))
+
+  result = compareMolecules(molecules[0], molecules[1])
+
+  if result == True:
+    sys.stdout.write("Geometries are same.\n")
+  else:
+    sys.stdout.write("Geometries are not same.\n")
+
+  return
+
+if __name__=="__main__":
+  main()

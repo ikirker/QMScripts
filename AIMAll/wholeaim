@@ -11,15 +11,13 @@ $0 - broken down tasks with AIMAll in the queue.
  Opts:
     -a <atoms>    Only do these atoms (comma separated list)
     -f '<flags>'  Flags to use for the aimqb runs. (Already included: -skipint=true -nogui)
-    -n <procs>    Number of processors.
-    -p            Use ssh - you must set a HostList variable for this to work.
     -i            Don't do the initial aimqb run to generate the integration files.
     -s            Don't do a final aimqb run to update the sum files.
     -h            Print this help message.
 "
 
 #Get command line arguments
-while getopts  "ia:f:n:psh" flag
+while getopts  "ia:f:sh" flag
 do
   case "$flag" in
     "a")
@@ -28,17 +26,11 @@ do
     "f")
       OtherFlags=$OPTARG
       ;;
-    "n")
-      NumProcs=$OPTARG
-      ;;
     "i")
       SkipInitialGenStep="y"
       ;;
     "s")
       SkipFinalSum="y"
-      ;;
-    "p")
-      ParallelMechanism="ssh"
       ;;
     "h")
       echo -e "$Help"

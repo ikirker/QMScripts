@@ -11,6 +11,17 @@ import math
 #  up to date version of Python. For now, the namedtuple
 #  function is included below instead of being imported from
 #  the collections module.
+# Ditto the 'all' function.
+
+try:
+  all([1])
+except NameError:
+  def all(listOfThings):
+    for thing in listOfThings:
+      if not thing:
+        return False
+    return True
+
 #import collections # For named tuple, see below
 
 ###################################

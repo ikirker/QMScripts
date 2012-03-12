@@ -4,15 +4,16 @@
 
 AIMQB=$HOME/AIMAll/aimqb.ish
 AIMINT=$HOME/AIMAll/aimint.ish
+AIMSUM=$HOME/AIMAll/aimsum.ish
 System="legion" # Options: xenon or legion
 
 Help="
 $0 - broken down tasks with AIMAll in the queue.
  Opts:
     -a <atoms>    Only do these atoms (comma separated list)
-    -f '<flags>'  Flags to use for the aimqb runs. (Already included: -skipint=true -nogui)
+    -f '<flags>'  Flags to use for the aimqb run. (Already included: -skipint=true -nogui)
     -i            Don't do the initial aimqb run to generate the integration files.
-    -s            Don't do a final aimqb run to update the sum files.
+    -s            Don't do a final aimsum run to update the sum files.
     -h            Print this help message.
 "
 
@@ -115,7 +116,11 @@ s_\(.*\)</Nuclear Names>_\1_
 t Quit                       
 T AddToBuffer                
 
-:Quit                        
+:Quit
+:ButNotBeforeTrimmingErrantNewLinesAndLowerCasingEverything
+s///g
+s/^\n//
+s/\n\$//
 y_ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz_
 p                            
 q                            
@@ -188,7 +193,7 @@ for atom in $Atoms; do
 done
 
 if [[ "$SkipFinalSum" != "y" ]]; then
-  JobCommand="$AIMQB -skipint=true -nogui $OtherFlags $Wfxfile"
+  JobCommand="$AIMSUM $Wfxfile"
   Dependencies="$AtomIntIDs"
   if [[ "$AtomIntIDs" == "" ]]; then
     # If there aren't any job ids from the main bit, something is wrong

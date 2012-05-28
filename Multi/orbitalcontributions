@@ -483,6 +483,8 @@ def parseOptions():
           help="Only show percentage components of a certain atom", metavar="atom")
   parser.add_option("--dont-show", metavar="atom1,atom2,...", action="store", type="string", dest="dont_show", default=None,
           help="Don't show percentage components of certain atoms")
+  parser.add_option("--pgf", action="store_true", dest="pgf_modus", default=False,
+          help="generate output energies for PGFPlots")
   #I'd like to add this but first TODO I'd have to convert the energies to actually be numbers below
   #  and it'd involve a fair bit of fiddling
   #parser.add_option("-u", "--units", action="store", type="string", dest="units", default="eV",
@@ -596,7 +598,6 @@ def readG09orbitalContributions(lines):
         continue
       orbLines = orbLines + line.lstrip(' ').rstrip("\n")  
     
-
   for maOrb in reEntry.finditer(orbLines):  
     if maOrb.group(1) == "Alpha":
       spinLabel = "1"
@@ -647,13 +648,13 @@ def filterMOlist(MOlist, options):
     filterList.append( lambda MO: MO.spin!="2" )
   if options.occ:
     filterList.append( lambda MO: float(MO.occupancy) >= 0.5 )
-  if options.minocc:
+  if options.minocc != None:
     filterList.append( lambda MO: float(MO.occupancy) >= options.minocc )
-  if options.maxocc:
+  if options.maxocc != None:
     filterList.append( lambda MO: float(MO.occupancy) <= options.maxocc )
-  if options.min_energy:
+  if options.min_energy != None:
     filterList.append( lambda MO: float(MO.energy) >= options.min_energy )
-  if options.max_energy:
+  if options.max_energy != None:
     filterList.append( lambda MO: float(MO.energy) <= options.max_energy )
  
   filterByListLambda = lambda x: filterByList(x,filterList)
@@ -721,6 +722,8 @@ def main():
       else:
         spinLabel = "+-"
       oneLine = ("%3s %5s%1s: %7s eV, %s occ: " % (MO.number, MO.symmetry, spinLabel, MO.energy, MO.occupancy))
+      if options.pgf_modus == True:
+        oneLine = ("(%s,%7s) %% %s " % (options.only_show,MO.energy, MO.occupancy))
       oneLine += ("%s " % (componentString(MO.components,options))) 
       outputSet.append(oneLine)
     outputSets.append(outputSet)

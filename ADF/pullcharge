@@ -1,0 +1,204 @@
+#!/usr/bin/python
+
+import re
+import sys
+import getopt
+
+def usage():
+  sys.stdout.write("""
+  Usage: pullcharge [-h|-m|-s] file.out
+    -h   Hirshfeld charges
+    -m   Mulliken charges
+    -s   Mulliken integrated spin densities
+    \n""")
+
+
+def getHirshfeldMap(lines):
+  reGeomBlock         = re.compile(" G E O M E T R Y")
+  reFragSubBlock  = re.compile(" FRAGMENTS")
+  reFragLines     = re.compile("""[ \t]+
+                                  (\d+)
+                  [ \t]+
+                  \w+
+                  [ \t]+
+                  (\d+)
+                  [ \t]+
+                  \w+""",re.X)
+                  #(?:[-]{0,1}[0-9]+\.[0-9]+)")[ \t]+(?:[-]{0,1}[0-9]+\.[0-9]+)[ \t]+(?:[-]{0,1}[0-9]+\.[0-9]+)[ \t]+")
+  reFragSubEnd    = re.compile("^[ \t]+$")
+  
+  atomMapping = list()
+  
+  inGeomBlock=False
+  inFragSubBlock=False
+  for line in lines:
+    if inGeomBlock==False:
+      if reGeomBlock.match(line)!=None:
+        inGeomBlock=True
+        inFragSubBlock=False # Just in case
+    else:
+      if inFragSubBlock==False:
+        if reFragSubBlock.match(line)!=None:
+          inFragSubBlock=True
+      else:
+        if reFragSubEnd.match(line)!=None:
+          inFragSubBlock=False
+          inGeomBlock=False
+        else:
+          matchFragLines = reFragLines.match(line)
+          if matchFragLines!=None:
+            atomMapping.append(int(matchFragLines.group(2)))
+  #print(repr(atomMapping))
+  return atomMapping
+  
+def remap(atoms, atomMapping):
+  if len(atoms)!=len(atomMapping):
+    sys.stderr.write("Error: number of atoms and mappings do not match for fragments. (%d atoms, %d mappings)\n" % (len(atoms), len(atomMapping)))
+    sys.exit(2)
+  
+  mappedAtoms = [ "" for i in range(len(atoms)) ]
+
+  
+  i=0  
+  while i<len(atoms):
+    mappedAtoms[atomMapping[i]-1] = atoms[i]
+    i=i+1
+  
+  return mappedAtoms
+
+      
+def main():
+  
+  opts = 'mhsvd'
+
+  if len(sys.argv) == 1:
+    usage()
+    sys.exit(2)
+
+  try:
+    opts, args = getopt.getopt(sys.argv[1:],opts)
+  except getopt.GetoptError, err:
+    # print help information and exit:
+    print str(err) # will print something like "option -a not recognized"
+    usage()
+    sys.exit(2)
+  
+  verbose = False
+
+  chargeType = None
+  for o,v in opts:
+    if o=="-m":
+      if chargeType == None:
+        chargeType = "Mulliken"
+      else:
+        sys.stderr.write("Error: mutually exclusive charge type options specified.\n")
+        sys.exit(2)
+    if o=="-h":
+      if chargeType == None:
+        chargeType = "Hirshfeld"
+      else:
+        sys.stderr.write("Error: mutually exclusive charge type options specified.\n")
+        sys.exit(2)
+    if o=="-s":
+      if chargeType == None:
+        chargeType = "Mulliken Spin"
+      else:
+        sys.stderr.write("Error: more than one charge/spin type option specified.\n")
+        sys.exit(2)
+    if o=="-d":
+      sys.stderr.write("Error: Voronoi Deformation charge extraction is not yet implemented.\n")
+      sys.exit(2)
+    if o=="-v":
+      sys.stderr.write("Error: Voronoi charge extraction is not yet implemented.\n")
+      sys.exit(2)
+    
+  #Default chargeType
+  if chargeType == None:
+    chargeType = "Hirshfeld"
+    
+  if args == None:
+    usage()
+  else:
+    inputFile = args.pop()
+  
+  #Check and get filetype
+  reFilename = re.compile("(.*)\.(out)$")
+  maFilename = reFilename.match(inputFile)
+  if maFilename==None:
+    sys.stderr.write("File has inappropriate extension - needs .out\n")
+    sys.exit(2)
+  
+  print(maFilename.group(1))
+  
+  file = open(inputFile,"r")
+  lines = file.readlines()
+
+  if chargeType == "Hirshfeld":
+    # These block markers are by necessity a little inexact.
+    atomMapping = getHirshfeldMap(lines)
+    reMarker = re.compile(" H I R S H F E L D   C H A R G E   A N A L Y S I S")
+    reBlockStart = re.compile(" in the input file!")
+    reBlockEnd   = re.compile(" Sum of these charges")
+    reAtom       = re.compile("[ \t]+\d+[ \t]+(\w{1,2})[ \t]+([0-9+.-]+)")
+
+  if chargeType == "Mulliken":
+    reMarker = re.compile(" M U L L I K E N   P O P U L A T I O N S")
+    reBlockStart = re.compile(" ----              ------    ------------ ")
+    reBlockEnd   = re.compile("^$")
+    #reAtom       = re.compile(" 1 Pu              2.0817          4.3649 ") # Second value is spin density
+    reAtom       = re.compile("[ ]+\d+[ \t]+(\w{1,2})[ \t]+([0-9+.-]+)[ \t]+")
+
+  if chargeType == "Mulliken Spin":
+    sys.stderr.write("Warning: this simple script will not give warning on restricted calculations, it just won't work.\nYou'll get the Mulliken S population instead.\n")
+    reMarker = re.compile(" M U L L I K E N   P O P U L A T I O N S")
+    reBlockStart = re.compile(" ----              ------    ------------ ")
+    reBlockEnd   = re.compile("^$")
+    #reAtom       = re.compile(" 1 Pu              2.0817          4.3649 ") # Second value is spin density
+    reAtom       = re.compile("[ ]+\d+[ \t]+(\w{1,2})[ \t]+(?:[0-9+.-]+)[ \t]+ ([0-9+.-]+)[ \t]+")
+
+  if chargeType == "VDD":
+    reMarker = re.compile("")
+    reBlockStart = re.compile("")
+    reBlockEnd   = re.compile("")
+    reAtom       = re.compile("")
+
+  
+  bMark = False
+  bBlock = False
+  
+  for line in lines:
+    
+    if bMark == False:
+      if reMarker.match(line)!=None:
+        bMark = True
+        atoms = list()
+    else:
+      if bBlock == False:
+        if reBlockStart.match(line)!=None:
+          bBlock = True
+      else:
+        if reBlockEnd.match(line)!=None:
+          bBlock = False
+          bMark  = False
+        else:
+          maAtom = reAtom.match(line)
+          if maAtom!=None:
+            atoms.append([maAtom.group(1),maAtom.group(2)])
+  #Done for
+  
+  if chargeType=="Hirshfeld":
+    atoms = remap(atoms,atomMapping)
+  
+  #Print list
+  print(len(atoms))
+  print("")
+  i=0
+  sFormat = "%"+repr(len(repr(len(atoms))))+"d  %s \t %7.4f"
+  for atom in atoms:
+    i=i+1
+    print(sFormat % (i, atom[0],float(atom[1])))
+  
+
+if __name__ == "__main__":
+  main()  
+

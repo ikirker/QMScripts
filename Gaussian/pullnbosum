@@ -1,0 +1,422 @@
+#!/usr/bin/env python
+
+import re
+import sys
+import collections
+import math
+from optparse import OptionParser
+
+###################################
+#  Named tuple recipe
+#  This is in the collections
+#   module in more up-to-date
+#   versions of Python, but it's
+#   included here for system-
+#   proofing.
+###################################
+## {{{ http://code.activestate.com/recipes/500261/ (r15)
+from operator import itemgetter as _itemgetter
+from keyword import iskeyword as _iskeyword
+import sys as _sys
+
+def namedtuple(typename, field_names, verbose=False, rename=False):
+    """Returns a new subclass of tuple with named fields.
+
+    >>> Point = namedtuple('Point', 'x y')
+    >>> Point.__doc__                   # docstring for the new class
+    'Point(x, y)'
+    >>> p = Point(11, y=22)             # instantiate with positional args or keywords
+    >>> p[0] + p[1]                     # indexable like a plain tuple
+    33
+    >>> x, y = p                        # unpack like a regular tuple
+    >>> x, y
+    (11, 22)
+    >>> p.x + p.y                       # fields also accessable by name
+    33
+    >>> d = p._asdict()                 # convert to a dictionary
+    >>> d['x']
+    11
+    >>> Point(**d)                      # convert from a dictionary
+    Point(x=11, y=22)
+    >>> p._replace(x=100)               # _replace() is like str.replace() but targets named fields
+    Point(x=100, y=22)
+
+    """
+
+    # Parse and validate the field names.  Validation serves two purposes,
+    # generating informative error messages and preventing template injection attacks.
+    if isinstance(field_names, basestring):
+        field_names = field_names.replace(',', ' ').split() # names separated by whitespace and/or commas
+    field_names = tuple(map(str, field_names))
+    if rename:
+        names = list(field_names)
+        seen = set()
+        for i, name in enumerate(names):
+            if (not min(c.isalnum() or c=='_' for c in name) or _iskeyword(name)
+                or not name or name[0].isdigit() or name.startswith('_')
+                or name in seen):
+                    names[i] = '_%d' % i
+            seen.add(name)
+        field_names = tuple(names)
+    for name in (typename,) + field_names:
+        if not min(c.isalnum() or c=='_' for c in name):
+            raise ValueError('Type names and field names can only contain alphanumeric characters and underscores: %r' % name)
+        if _iskeyword(name):
+            raise ValueError('Type names and field names cannot be a keyword: %r' % name)
+        if name[0].isdigit():
+            raise ValueError('Type names and field names cannot start with a number: %r' % name)
+    seen_names = set()
+    for name in field_names:
+        if name.startswith('_') and not rename:
+            raise ValueError('Field names cannot start with an underscore: %r' % name)
+        if name in seen_names:
+            raise ValueError('Encountered duplicate field name: %r' % name)
+        seen_names.add(name)
+
+    # Create and fill-in the class template
+    numfields = len(field_names)
+    argtxt = repr(field_names).replace("'", "")[1:-1]   # tuple repr without parens or quotes
+    reprtxt = ', '.join('%s=%%r' % name for name in field_names)
+    template = '''class %(typename)s(tuple):
+        '%(typename)s(%(argtxt)s)' \n
+        __slots__ = () \n
+        _fields = %(field_names)r \n
+        def __new__(_cls, %(argtxt)s):
+            return _tuple.__new__(_cls, (%(argtxt)s)) \n
+        @classmethod
+        def _make(cls, iterable, new=tuple.__new__, len=len):
+            'Make a new %(typename)s object from a sequence or iterable'
+            result = new(cls, iterable)
+            if len(result) != %(numfields)d:
+                raise TypeError('Expected %(numfields)d arguments, got %%d' %% len(result))
+            return result \n
+        def __repr__(self):
+            return '%(typename)s(%(reprtxt)s)' %% self \n
+        def _asdict(self):
+            'Return a new dict which maps field names to their values'
+            return dict(zip(self._fields, self)) \n
+        def _replace(_self, **kwds):
+            'Return a new %(typename)s object replacing specified fields with new values'
+            result = _self._make(map(kwds.pop, %(field_names)r, _self))
+            if kwds:
+                raise ValueError('Got unexpected field names: %%r' %% kwds.keys())
+            return result \n
+        def __getnewargs__(self):
+            return tuple(self) \n\n''' % locals()
+    for i, name in enumerate(field_names):
+        template += '        %s = _property(_itemgetter(%d))\n' % (name, i)
+    if verbose:
+        print template
+
+    # Execute the template string in a temporary namespace
+    namespace = dict(_itemgetter=_itemgetter, __name__='namedtuple_%s' % typename,
+                     _property=property, _tuple=tuple)
+    try:
+        exec template in namespace
+    except SyntaxError, e:
+        raise SyntaxError(e.message + ':\n' + template)
+    result = namespace[typename]
+
+    # For pickling to work, the __module__ variable needs to be set to the frame
+    # where the named tuple is created.  Bypass this step in enviroments where
+    # sys._getframe is not defined (Jython for example) or sys._getframe is not
+    # defined for arguments greater than 0 (IronPython).
+    try:
+        result.__module__ = _sys._getframe(1).f_globals.get('__name__', '__main__')
+    except (AttributeError, ValueError):
+        pass
+
+    return result
+
+# I removed the module unit test here - it checks for __main__
+
+#### Command line options
+
+def parseOptions():
+  usage = "usage: %prog [options] arg1 ..."
+  parser = OptionParser(usage=usage)
+  parser.add_option("-a", "--alpha", action="store_true", dest="alpha", default=False,
+          help="only consider alpha spin orbitals")
+  parser.add_option("-b", "--beta",  action="store_true", dest="beta", default=False,
+          help="only consider beta spin orbitals")
+  parser.add_option("-d", "--diff", action="store_true", dest="diff", default=False,
+          help="subtract beta from alpha")
+  parser.add_option("--only-show", action="store", type="string", dest="only_show", default=None,
+          help="Only show data for a certain atom", metavar="atom")
+  parser.add_option("--pgf", action="store_true", dest="pgf_modus", default=False,
+          help="generate output energies for PGFPlots")
+  (options, args) = parser.parse_args()
+
+  if len(args) == 0:
+    parser.print_help()
+    sys.exit(2)
+
+  return (options,args)
+
+#####
+# Defs, and reader
+
+AtomSummaryMaker   = namedtuple("AtomSummary", "element number charge core valence rydberg total")
+SummaryTotalMaker  = namedtuple("SummaryTotal", " charge, core, valence, rydberg, total")
+AtomBreakdownMaker = namedtuple("AtomBreakdown", "element number hasCore components")
+
+def readLogfile ( filename ):
+  reBeginSection = re.compile("^ Summary of Natural Population Analysis:[ ]*$")
+  exactStringBeginSection = " Summary of Natural Population Analysis:                  \n"
+  reBlankline    = re.compile("^[ \t]*$")
+  reDashline     = re.compile("^[ \t]+-+[ \t]*$")
+  reEqline       = re.compile("^[ \t]+=+[ \t]*$")
+
+  reSummaryStart = re.compile("^[ \t]+Atom  No    Charge         Core      Valence    Rydberg      Total[ \t]*$")
+  reSummaryEnd = reBlankline
+  reSummaryLine= re.compile(
+      "^     [ ]?(\w{1,2})"+
+      "[ ]+(\d+)"+
+      "[ ]+(-?[0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]*$")
+  reSummaryTotal = re.compile(
+      "   \* Total \*"+
+      "[ ]+(-?[0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]+([0-9]+\.[0-9]+)"+
+      "[ ]*$")
+
+  reBreakdownStart = re.compile("^[ \t]+Atom  No          Natural Electron Configuration[ ]*$")
+  reBreakdownEnd = reBlankline
+  reBreakdownLine = re.compile("^[ \t]+(\w{1,2})[ ]+(\d+)(      \[core\]|           )(.*)$")
+
+  try:
+    file = open(filename, "r")
+  except:
+    sys.stderr.write("Could not open file %s for reading.\n" % filename)
+
+
+  Summaries = list()
+  Breakdowns = list()
+  SummaryTotals = list()
+
+  i = 0
+
+  fileIter = file.readlines().__iter__()
+  for line in fileIter:
+    if line != exactStringBeginSection:
+      continue
+    #match = reBeginSection.match(line)
+    #if match == None:
+    #  continue
+
+    # Add a new list for this set of data
+    Summaries.append( list() )
+    Breakdowns.append( list() )
+    SummaryTotals.append( list() )
+
+    line = fileIter.next()
+    line = fileIter.next()
+    line = fileIter.next()
+    line = fileIter.next()
+    line = fileIter.next()
+    line = fileIter.next()
+
+    while ( reBlankline.match(line) == None):
+      match = reSummaryLine.match(line)
+      if match != None:
+        Summaries[i].append(processSummaryMatch(match))
+      else:
+        match = reSummaryTotal.match(line)
+        if match == None:
+          match = reEqline.match(line)
+          if match == None:
+            sys.stderr.write("Summary Total not found! Panic!\n  Line follows:\n%s\n" % line)
+        else:
+          SummaryTotals[i] = processSummaryTotal(match)
+      line = fileIter.next()
+    
+    while ( reBreakdownStart.match(line) == None ):
+        line = fileIter.next()
+    
+    fileIter.next()
+    line = fileIter.next()
+
+    while ( reBlankline.match(line) == None):
+      match = reBreakdownLine.match(line)
+      if match != None:
+        Breakdowns[i].append(processBreakdownMatch(match))
+      else:
+        sys.stderr.write("Breakdowns broken! Panic!\n  Line follows:\n%s\n" % line)
+      line = fileIter.next()
+
+    # Done, so
+    i=i+1 # increment the storage so we can store the alpha then the beta
+
+  file.close()
+
+  return (Summaries,Breakdowns,SummaryTotals)
+
+def processSummaryMatch(match):
+  element = match.group(1)
+  number  = int(match.group(2))
+  charge  = float(match.group(3))
+  core    = float(match.group(4))
+  valence = float(match.group(5))
+  rydberg = float(match.group(6))
+  total   = float(match.group(7))
+  return AtomSummaryMaker( element, number, charge, core, valence, rydberg, total) 
+
+def processSummaryTotal(match):
+  charge  = float(match.group(1))
+  core    = float(match.group(2))
+  valence = float(match.group(3))
+  rydberg = float(match.group(4))
+  total   = float(match.group(5))
+  return SummaryTotalMaker( charge, core, valence, rydberg, total )
+
+def processBreakdownMatch(match):
+  element = match.group(1)
+  number  = int(match.group(2))
+  core    = match.group(3)
+  componentString = match.group(4)
+
+  if core == "      [core]" :
+    hasCore = True
+  elif core == "           ":
+    hasCore = False
+  else :
+    sys.stderr.write("Unexpected format in NBO breakdown core line.\n  String follows:\n%s\n" % core.replace(" ","^"))
+    
+  #componentExample = "7S( 0.11)5f( 7.22)6d( 1.00)7p( 0.01)"
+  componentFrags = componentString.split(")")
+  componentList = list()
+  reFrag = re.compile("[ ]?(\d)(\w)\([ ]?(\d+\.\d+)")
+  for frag in componentFrags:
+    fragMatch = reFrag.match(frag)
+    if fragMatch != None:
+      componentList.append(( int(fragMatch.group(1)),fragMatch.group(2),float(fragMatch.group(3)) ))
+
+  return AtomBreakdownMaker( element, number, hasCore, componentList )
+
+def convertOrbConfigToText(components):
+  s = ' '.join(map( lambda x: ("(%d%c,%.2f)" % (x[0],x[1],x[2]) ), components ) )
+  return s
+
+def printChargeAndBreakdown(Summaries,Breakdowns):
+  # Note these are just one set of summaries and breakdowns rather than all three.
+  coreString = lambda x: x and '[core]' or ''
+  sys.stdout.write("Atom No   Charge   Natural Atomic Orbital Occ\n")
+  sys.stdout.write("--------------------------------------------\n")
+  for i in range(0,len(Summaries)):
+    line = " %2s %3d  %9.5f  %6s %s\n" % (
+        Summaries[i].element,
+        Summaries[i].number,
+        Summaries[i].charge,
+        coreString(Breakdowns[i].hasCore),
+        convertOrbConfigToText(Breakdowns[i].components)
+      )
+    sys.stdout.write(line)
+  return
+
+
+def main():
+  (opts,args) = parseOptions()
+
+  for filename in args:
+    (Summaries,Breakdowns,SummaryTotals) = readLogfile(filename)
+    # Now do something with them. :P
+
+  
+    if opts.alpha == True:
+      sys.stdout.write("Alpha electrons:\n")
+      printChargeAndBreakdown(Summaries[1],Breakdowns[1])
+    elif opts.beta == True:
+      sys.stdout.write("Beta electrons:\n")
+      printChargeAndBreakdown(Summaries[2],Breakdowns[2])
+    else:
+      # Default
+      printChargeAndBreakdown(Summaries[0],Breakdowns[0])
+    
+  
+
+
+if __name__ == "__main__":
+  main()
+
+SummaryExample = """
+                                       Natural Population
+                Natural  -----------------------------------------------
+    Atom  No    Charge         Core      Valence    Rydberg      Total
+ -----------------------------------------------------------------------
+     Cm    1    1.58802     85.98774     8.33233    0.09191    94.41198
+      C    2   -0.36168      1.99876     4.34030    0.02262     6.36168
+      C    3   -0.36168      1.99876     4.34030    0.02262     6.36168
+      C    4   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C    5   -0.37327      1.99869     4.35107    0.02352     6.37327
+      C    6   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C    7   -0.36168      1.99876     4.34030    0.02262     6.36168
+      C    8   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C    9   -0.37327      1.99869     4.35107    0.02352     6.37327
+      C   10   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C   11   -0.36168      1.99876     4.34030    0.02262     6.36168
+      C   12   -0.36168      1.99876     4.34030    0.02262     6.36168
+      C   13   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C   14   -0.37327      1.99869     4.35107    0.02352     6.37327
+      C   15   -0.35732      1.99870     4.33577    0.02285     6.35732
+      C   16   -0.36168      1.99876     4.34030    0.02262     6.36168
+      H   17    0.25723      0.00000     0.74061    0.00217     0.74277
+      H   18    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   19    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   20    0.25723      0.00000     0.74061    0.00217     0.74277
+      H   21    0.25811      0.00000     0.73938    0.00251     0.74189
+      H   22    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   23    0.25723      0.00000     0.74061    0.00217     0.74277
+      H   24    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   25    0.25723      0.00000     0.74061    0.00217     0.74277
+      H   26    0.25811      0.00000     0.73938    0.00251     0.74189
+      H   27    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   28    0.25468      0.00000     0.74303    0.00229     0.74532
+      H   29    0.25723      0.00000     0.74061    0.00217     0.74277
+      H   30    0.25811      0.00000     0.73938    0.00251     0.74189
+      H   31    0.25723      0.00000     0.74061    0.00217     0.74277
+ =======================================================================
+   * Total *    0.00000    115.96853    84.56189    0.46957   201.00000
+"""
+
+BreakdownExample = """
+    Atom  No          Natural Electron Configuration
+ ----------------------------------------------------------------------------
+     Cm    1      [core]7S( 0.11)5f( 7.22)6d( 1.00)7p( 0.01)
+      C    2      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      C    3      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      C    4      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C    5      [core]2S( 0.97)2p( 3.38)3p( 0.02)
+      C    6      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C    7      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      C    8      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C    9      [core]2S( 0.97)2p( 3.38)3p( 0.02)
+      C   10      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C   11      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      C   12      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      C   13      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C   14      [core]2S( 0.97)2p( 3.38)3p( 0.02)
+      C   15      [core]2S( 0.97)2p( 3.36)3p( 0.02)
+      C   16      [core]2S( 0.98)2p( 3.36)3p( 0.02)
+      H   17            1S( 0.74)
+      H   18            1S( 0.74)
+      H   19            1S( 0.74)
+      H   20            1S( 0.74)
+      H   21            1S( 0.74)
+      H   22            1S( 0.74)
+      H   23            1S( 0.74)
+      H   24            1S( 0.74)
+      H   25            1S( 0.74)
+      H   26            1S( 0.74)
+      H   27            1S( 0.74)
+      H   28            1S( 0.74)
+      H   29            1S( 0.74)
+      H   30            1S( 0.74)
+      H   31            1S( 0.74)
+"""

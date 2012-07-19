@@ -300,7 +300,7 @@ def printEnergyDensityRatios(CPs):
   CPs.sort(key=lambda x: x.type+' '.join(sorted(x.atoms.split())))
   sys.stdout.write("Atoms\tType\tK\tV\tG\tV/G\n")
   for CP in CPs:
-    sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" %
+    sys.stdout.write("%s\t%s\t%s\t%s\t%s\t%s\n" %
                      (
                        ' '.join(sorted(CP.atoms.split())),
                        CP.type, CP.K, CP.V, CP.G, repr(float(CP.V)/float(CP.G))

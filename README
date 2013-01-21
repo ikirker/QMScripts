@@ -12,3 +12,6 @@ Folders:
 * Multi/ contains scripts for use with more than one of the above.
 
 * TestFiles/ contains examples of files which should work with these scripts.
+
+Everything in this repository is released under the BSD 2-Clause license; not because I think it's masterful work, but so people can take it and do essentially what they want with it. The license is contained in License.txt.
+

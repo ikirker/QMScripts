@@ -1,0 +1,28 @@
+#!/usr/bin/python
+
+import sys
+import os
+import subprocess
+import datetime
+import re
+
+def main():
+   if len(sys.argv) > 1: 
+	   envTolerance = sys.argv[1]
+   else:	   
+	   envTolerance = 0.1
+   inputString = "1.0 1.0 1.0 90.0 90.0 90.0\n"
+   inputString = inputString + "1 1 " + str(envTolerance) + " " + str(envTolerance) + "\n"
+   
+   count = 0
+   for line in sys.stdin.readlines():
+      el = line.split()
+      if len(el) == 4:
+         inputString = inputString + ("%6ls%2d%9.5f%9.5f%9.5f\n" % (el[0]+str(count), 1, float(el[1]), float(el[2]), float(el[3])))
+         count = count + 1
+
+   sys.stdout.write(inputString)
+
+if __name__ == "__main__":
+   main()
+

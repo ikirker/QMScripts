@@ -2,6 +2,8 @@
 A collection of scripts for use with QM codes
 =============================================
 
+Note: these have not been maintained (or, probably, used) in several years and may no longer work with current software releases.
+
 Folders:
 
 * ADF/ contains scripts for use with the ADF (probably 2010.02) program, from http://scm.com/
@@ -13,5 +15,5 @@ Folders:
 
 * TestFiles/ contains examples of files which should work with these scripts.
 
-Everything in this repository is released under the BSD 2-Clause license; not because I think it's masterful work, but so people can take it and do essentially what they want with it. The license is contained in License.txt.
+Everything in this repository is released under the BSD 2-Clause license; not because I think it's masterful work, but so people can take it and do essentially what they want with it. The license is contained in LICENSE.
 
